@@ -1,0 +1,884 @@
+<html>
+<head>
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript">
+      google.load("visualization", "1", {});
+      google.load("prototype", "1.6");
+    </script>
+	
+<script type="text/javascript" src="http://systemsbiology-visualizations.googlecode.com/svn/trunk/src/main/js/load.js"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js"></script>
+<script type="text/javascript" src="http://simplemodal.googlecode.com/files/jquery.simplemodal.1.4.3.min.js"></script>
+<script type="text/javascript" src="js/jquery.simplemodal.1.4.3.min.js"></script>
+
+<link type="text/css" href="css/smoothness/jquery-ui-1.8.16.custom.css" rel="stylesheet" />
+
+<script type="text/javascript">
+	 $.noConflict();
+
+
+	  
+	 //fusion table IDs
+	 var SalesTable = 5461848; //SMS sales data
+	 var ClientsTable = 4979471; //SMS clients data
+	 var NewADTable = 5461272; //Shop owner entry form
+	 var ADCatTable = 5461074; //Shop owner categorization table
+	 
+	 // query the categorization table
+	 var queryCategory = encodeURIComponent("SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos','BizLink','RecordAccting','BizRegLic', 'ShopID' FROM "+ADCatTable+"");
+	 var CategoryData = new google.visualization.DataTable(); //create category data table
+	 
+	 //query the clients table
+	 var queryClient = encodeURIComponent("SELECT 'New_Male_Customer','New_Female_Customer','Old_Male_Customer','Old_Female_Customer' FROM "+ClientsTable+"");
+	 var ADClientData = new google.visualization.DataTable();
+	 
+	 //query the dealer entry table
+	 var queryEntry = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic','PhoneNum', 'ShopID' FROM "+NewADTable+"");
+	 var EntryData = new google.visualization.DataTable();
+	 
+	 //query the SMS table
+	 var selectedID = 1021;
+	 //query by dealer ID
+	 var querySMS = encodeURIComponent("SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+" WHERE Shop_ID_Number="+selectedID+"");
+	 //query whole table
+	 var querySMSRaw = encodeURIComponent("SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+"");
+	 var SMSData = new google.visualization.DataTable(); //raw data table
+	 var ClientData = new google.visualization.DataTable();//client data table
+
+	 var detailedContent; //detailed profile
+	 
+	 var selected = false;
+
+   // autocomplete search options for AD Profiles table
+   var profileSearchOptions = [];
+	 
+   var activeMarker; // helps track an open marker so it can be closed when another is opened
+
+
+   // helper fn because of a scoping problem. used in the listener closure for the map markers
+  function getInfowindow() {
+    return infowindow;
+  }
+
+
+
+	 //blanket function to query fusiontables
+	function loadTable(query, callbackFunction){
+		 var queryText = query;
+		 var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq=' + queryText);
+		 query.send(callbackFunction);
+	 }
+	 
+	 /*
+	 jhe window loads:
+		* all the data from the fusion table
+		* interface components
+		* Map
+	 */
+	 jQuery(document).ready(function($) {
+			$('#tabs').tabs();
+			$('#sub-tabs1').tabs();
+			$('#sub-tabs3').tabs();
+			loadTable(queryCategory, generateCategoryDataTable);
+			loadTable(queryEntry, generateEntryDataTable);
+			loadTable(querySMSRaw, generateSMSDataRawTable);
+			loadTable(queryClient, generateClientTable);
+			initializeMap();
+
+	  });
+	  //update dealer profiles in a <div> with the id AD_Profile
+	 
+ 
+	 function updateProfile(Content){
+		$('#AD_Profile').append(Content);
+	  }
+	  
+//load visualization packages
+   	google.load('visualization', '1', {packages:['table']});
+	google.load("visualization", "1", {packages:["corechart"]});
+    systemsbiology.load("visualization", "1.0", {packages:["bioheatmap"]});
+	 
+/*************************
+**************************
+BEGIN MAP FUNCTIONS
+**************************
+**************************/
+//initialize variables
+var myLat = new Array();
+var myLng = new Array();
+var dealerNames = new Array();
+var ownerNames = new Array();
+var ownerPics = new Array();
+var shopPics = new Array();
+var catCircle;
+var marker, map, i;
+var infowindow;
+
+	function initializeMap() {
+		//query the agrodealer entry form for needed data
+		var queryText = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic' FROM "+NewADTable+"");
+		var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq='  + queryText);	  
+		query.send(getMapData);
+	}  
+	  
+	function getMapData(response){ 
+		//generate map. Centered in Atlanta for now
+		var mapCenter = new google.maps.LatLng(25.44,89.30);	
+		var mapOptions = {
+			center: mapCenter,
+			zoom: 9,
+			mapTypeId: google.maps.MapTypeId.ROADMAP
+		}
+		//draw map
+		map = new google.maps.Map(document.getElementById('map'), mapOptions);
+		var infowindow = new google.maps.InfoWindow(); //initialize info window
+		
+		//get coordinates
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();
+		
+		for(i=0; i<numRows; i++){
+			
+			//get agro-dealership names and shop pics
+			dealerNames[i] = response.getDataTable().getValue(i,0);	
+//			shopPics[i] = response.getDataTable().getValue(i,4);	
+			shopPics[i] = response.getDataTable().getValue(i,4) + "&previewImage=true";	
+					
+			//get owners names
+			ownerNames[i] = response.getDataTable().getValue(i,1);
+			ownerPics[i] = response.getDataTable().getValue(i,3);
+			
+			//get coordinates
+			var points = response.getDataTable().getValue(i,2);
+			var lng = points.substring(20,33); //split longitude
+			var lat = points.substring(34,47); //split latitude
+			
+			
+			myLat[i] = Number(lat); //store coordinates
+			myLng[i] = Number(lng); 
+		}
+		
+		//mark the map
+		for(i=0; i<myLat.length; i++)
+		{
+			marker = new google.maps.Marker({
+				position: new google.maps.LatLng(myLat[i], myLng[i]),
+				clickable: true,
+				map: map
+			});// draw markers
+			
+			//info window content
+			marker.info = new google.maps.InfoWindow({
+				content: "<div class='iwContent'>"+ 
+						"<b>Shop Name: </b>" + dealerNames[i]+ 
+						"</br> <b>Owner: </b>" + ownerNames[i]+ 
+						//"</br> <b>Owner Picture: </b> </br><img src='" + ownerPics[i] + "' width='75' height='75'/>"+
+						//"</br><b>Shop Picture: </b></br>  <img src='" + shopPics[i] + "' width='75' height='75'/>"+
+						"</br> <b>Owner Picture: </b> </br><img onclick='enlargePicture(this)' src='" + ownerPics[i] + "&previewImage=true' />"+
+						"</br><b>Shop Picture: </b></br>  <img onclick='enlargePicture(this)' src='" + shopPics[i] + "&previewImage=true' />"+
+						"</div>"
+				});
+			
+			//add marker listener
+			google.maps.event.addListener(marker, 'click', (function(marker, i) {
+			return function() {
+
+        if (activeMarker)
+          activeMarker.info.close();
+
+        innerInfowindow = getInfowindow(); // FIXME probably a better way to do this....
+        activeMarker = marker;
+        if(innerInfowindow) {
+          innerInfowindow.close();
+        }
+
+			  marker.info.open(map, this);		  
+				/* draw circle upon click; this is not entirely functional. The point was to draw circles
+				of varying radii based on agrodealer's sales */
+				var categoryOptions = {
+					strokeColor: "#FF0000",
+					strokeWeight: 2,
+					map: map,
+					center: this.position,
+					radius: 10000
+				};
+			//  catCircle = new google.maps.Circle(categoryOptions);
+			}
+		  })(marker, i));
+		}// end iteration
+	}//end map functions
+
+/*************************
+**************************
+GENERATE CATEGORY DATA TABLE
+This table is populated with raw categorization data
+**************************
+**************************/
+
+	function generateCategoryDataTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		
+		CategoryData.addColumn('string', response.getDataTable().getColumnLabel(0));
+			for(var i = 1; i<numCols-1; i++){
+//				CategoryData.addColumn('string', response.getDataTable().getColumnLabel(i));
+					CategoryData.addColumn('number', response.getDataTable().getColumnLabel(i));
+			}
+		
+		CategoryData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols-1 ; n++){
+				CategoryData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+
+		table = new google.visualization.Table(document.getElementById('ADCategoryTableContainer'));
+		table.draw(CategoryData, {page:"enable", pageSize:5 });
+
+	}// end category data table
+	
+/*************************
+**************************
+GENERATE CLIENTS TABLE
+This table is populated with clients raw data
+**************************
+**************************/
+
+	function generateClientTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		ClientData.addColumn('number', response.getDataTable().getColumnLabel(0));
+		
+		for(var i = 1; i<numCols; i++){
+			ClientData.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		ClientData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols ; n++){
+				ClientData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+
+		table = new google.visualization.Table(document.getElementById('ClientTableContainer'));
+		table.draw(ClientData, {page:"enable", pageSize:5 });
+
+		var NewMaleSum= 0;
+		var NewFemaleSum= 0;
+		var RepeatMaleSum= 0;
+		var RepeatFemaleSum= 0;
+		//add up clients by types: male, female, repeat male, repeat female
+		for(i=0; i<ClientData.getNumberOfRows(); i++){
+			NewMaleSum+=ClientData.getValue(i,0);
+			NewFemaleSum+=ClientData.getValue(i,1);
+			RepeatMaleSum+=ClientData.getValue(i,2);
+			RepeatFemaleSum+=ClientData.getValue(i,3);
+		}
+
+		//make a summary pie chart of client types for each agrodealer
+		var data = new google.visualization.DataTable();
+		data.addColumn('string', 'Label');
+		data.addColumn('number', 'Rows');
+		data.addRows([
+		['New Males', NewMaleSum],
+		['New Females', NewFemaleSum],
+		['Repeat Males', RepeatMaleSum], 
+		['Repeat Females', RepeatFemaleSum]
+		]);
+
+		// Set chart options
+		var options = {'title':'Krishi Utso Customers',
+					 'width':500,
+					 'height':400};
+/* Replaced with fusioncharts
+		// Instantiate and draw our chart, passing in some options.
+		var chart = new google.visualization.PieChart(document.getElementById('ClientChartContainer'));
+		chart.draw(data, options);
+*/
+	}//end clients table
+      
+/*************************
+**************************
+GENERATE ENTRY DATA TABLE
+This table is populated with entry data for various functions that use entry information
+**************************
+**************************/
+	function generateEntryDataTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		numColsDisplay = 2;	//display 2 columns: dealership name and owner name
+		var EntryDataTableDisplay = new google.visualization.DataTable(); //create table to display
+		
+		EntryData.addColumn('string', response.getDataTable().getColumnLabel(0)); //dealership name column
+		
+		for(var i = 1; i<numCols-1; i++){
+			EntryData.addColumn('string', response.getDataTable().getColumnLabel(i)); // other columns in the table
+		}
+
+		EntryData.addColumn('number', response.getDataTable().getColumnLabel(numCols-1)); // dealer ID column
+		EntryData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols ; n++){
+				EntryData.setCell(j, n, response.getDataTable().getValue(j,n)); //get table rows
+			}
+		}
+
+		//create the entry display on the first page
+    //and build the autocomplete search box
+		EntryDataTableDisplay.addColumn('string', response.getDataTable().getColumnLabel(0));
+		for(var i = 1; i<numColsDisplay; i++){
+			EntryDataTableDisplay.addColumn('string', response.getDataTable().getColumnLabel(i));
+		}
+		EntryDataTableDisplay.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numColsDisplay ; n++){
+				EntryDataTableDisplay.setCell(j, n, response.getDataTable().getValue(j,n));
+        profileSearchOptions.push(response.getDataTable().getValue(j,n));
+			}
+		}
+    jQuery("#profile-search").autocomplete({
+      source: profileSearchOptions
+    });
+
+
+
+    // the next two blocks set up the search box actions
+    // for when the enter key is pressed or the Go button is pressed
+    // future fix: factor this out into a separate function so there isn't repeat code
+    var frontPageNumRows = numRows;
+    var frontPageNumCols = numColsDisplay;
+    jQuery("#profile-search").keyup(function (e) {
+      if (e.keyCode == 13) { // enter key is pressed
+        for (var r=0; r < frontPageNumRows; ++r) {
+          for (var c=0; c < frontPageNumCols; ++c) {
+            if (jQuery('#profile-search').val() == EntryDataTableDisplay.getValue(r, c)) {
+              EntryTable.setSelection([{'row':r}]);
+              frontPageTableOnClick();
+            }
+          }
+        }
+      }
+    });
+    jQuery("#profile-search-btn").click(function(){
+      for (var r=0; r < frontPageNumRows; ++r) {
+        for (var c=0; c < frontPageNumCols; ++c) {
+          if (jQuery('#profile-search').val() == EntryDataTableDisplay.getValue(r, c)) {
+            EntryTable.setSelection([{'row':r}]);
+            frontPageTableOnClick();
+          }
+        }
+      }
+    });
+
+
+		EntryTable = new google.visualization.Table(document.getElementById('ADEntryTableContainer')); //draw front page table
+		EntryTable.draw(EntryDataTableDisplay, {height:'240px'}); // roughly 10 rows; scrollbar automatically added
+		
+		EntryTableRaw = new google.visualization.Table(document.getElementById('ADEntryTableContainerRaw')); //draw raw entry data table
+		EntryTableRaw.draw(EntryDataTableDisplay, {page:"enable", pageSize:5 });
+		
+		SMSTable = new google.visualization.Table(document.getElementById('SendSMSTableContainer')); //draw entry table to send SMS
+		SMSTable.draw(EntryDataTableDisplay, {page:"enable", pageSize:5 });
+
+		//add the selection listener for entry table on the SMS form
+		google.visualization.events.addListener(SMSTable, 'select', function(){
+			var selection = SMSTable.getSelection();	
+			for (var i = 0; i < selection.length; i++){ //function to get phone number after selection
+				var item1 = selection[i];
+				//select the PhoneNum column
+				var phoneNum = EntryData.getFormattedValue(item1.row, 5);
+			}
+			//create form to send message with phone number in form field
+			var SMSformContent = "<form action='web_send.py' method='post'>" +
+			  "<p> Recipient Phone Number: <input type='text' name = 'to' value = " + phoneNum + " /> </p>" +
+			  "<p> Message: <textarea name = 'message'></textarea> </p>" +
+			  "<p> <input type='submit' value='Send'/> </p>" +
+			  "</form>"
+			document.getElementById('sms_form').innerHTML = SMSformContent; //store in sms_form div
+
+		} );
+
+		//add the selection listener for entry table on the front page
+		google.visualization.events.addListener(EntryTable, 'select', frontPageTableOnClick);
+		
+	} //end entry data
+
+  // helper fn called whenever a row in the front page's table is selected
+  function frontPageTableOnClick() {
+		var selection = EntryTable.getSelection();	
+		var lng;
+		var lat;   
+
+		for (var i = 0; i < selection.length; i++){
+			var item1 = selection[i];
+
+		var dealerName = EntryData.getFormattedValue(item1.row, 0); //show agrodealer name
+		var points = EntryData.getFormattedValue(item1.row, 2);
+		//get coordinates
+		lng = Number(points.substring(20,33)); 
+		lat= Number(points.substring(34,47)); 
+		}
+
+		// Create an infowindow at the lat/long coordinates
+		// Set the content and open on the map
+    if (activeMarker) activeMarker.info.close();
+		if(infowindow) infowindow.close();
+		else infowindow = new google.maps.InfoWindow();
+		var content = "<div class='iwContent'>"+ 
+				"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
+				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
+//				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='75' height='75'/>"+
+//				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='75' height='75'/>"+
+				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+				"</div>";
+		//show detailed agrodealer profile
+		var detailedContent = "<div class='iwContent'>"+ 
+				"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
+				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
+//				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='160' height='120'/>"+
+//				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='160' height='120'/>"+
+				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+				//"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' />"+
+				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+				"</br> <b>Phone Number: </b>" + EntryData.getValue(selection[0].row, 5)+ 
+				"</div>";
+
+		infowindow.setContent(content); //set infowindow content
+		document.getElementById('AD_profile').innerHTML=detailedContent; //draw detailed profile on div
+		
+			selectedID = EntryData.getValue(selection[0].row, 6); //get and set dealer ID to customize charts and tables
+			querySMS = encodeURIComponent("SELECT 'Week_Number','Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Number_of_AI','Shop_ID_Number' FROM "+SalesTable+" WHERE Shop_ID_Number="+selectedID+"");
+			queryClient = encodeURIComponent("SELECT 'Week_Number','New_Male_Customer','New_Female_Customer','Old_Male_Customer','Old_Female_Customer','CARE_Customers_Male','CARE_Customers_Female','Shop_ID_Number' FROM "+ClientsTable+" WHERE Shop_ID_Number="+selectedID+"");
+			queryCategory = encodeURIComponent("SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos', 'BizLink','RecordAccting','BizRegLic' FROM "+ADCatTable+" WHERE ShopID="+selectedID+"");
+
+			//generate custom tables on right hand tabs
+			loadTable(querySMS, generateSMSDataNewTable);
+			loadTable(queryClient, generateADClientTable);
+			loadTable(queryCategory, generateADCategoryTable);
+			infowindow.setPosition(new google.maps.LatLng(lat, lng));
+			infowindow.open(map);	  
+  }
+
+
+  function enlargePicture(e) {
+    //alert(e.src);
+    var n = e.src.indexOf("&previewImage=true");
+    var fixed = e.src.substring(0,n);
+    //alert(fixed);
+    var options = {
+      onOpen: function (dialog) {
+        dialog.overlay.fadeIn('slow', function () {
+          dialog.container.show('slow', function () {
+            dialog.data.show();
+          });
+        });
+      },
+    };
+    jQuery.modal("<div><img src='" + fixed +"' height='400' width='400' /></div>'", options);
+  }
+
+  
+
+/*************************
+**************************
+GENERATE HEATMAP 
+The heatmap uses category data
+**************************
+**************************/
+	function generateADCategoryTable(response){
+
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();
+
+		var ADCategoryDataRaw =  new google.visualization.DataTable();
+		ADCategoryDataRaw.addColumn('string', response.getDataTable().getColumnLabel(0));
+		for(var  i = 1; i<numCols-1; i++){
+			//ADCategoryDataRaw.addColumn('string', response.getDataTable().getColumnLabel(i));
+			ADCategoryDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		
+		ADCategoryDataRaw.addRows(numRows); //generate rows of the category data
+
+		//get only numerical values of the category table
+		for(var j=0 ; j<numRows ; j++){
+			for(var n=0 ; n<numCols-1 ; n++){
+				var value = 0;
+				if (response.getDataTable().getValue(j,n)) {
+					if (n==0) {
+						value = response.getDataTable().getValue(j,n);
+					} else {
+						value = Number(response.getDataTable().getValue(j,n));
+					}
+				} 
+				ADCategoryDataRaw.setCell(j, n, value);
+			}	  	
+		}
+
+	//draw the heatmap
+	heatmap = new org.systemsbiology.visualization.BioHeatMap(document.getElementById('heatmapContainer'));
+	heatmap.draw(ADCategoryDataRaw, {startColor: {r:255, g:0, b:0, a:1},
+		  endColor: {r:0, g:255, b:0, a:1},
+		  passThroughBlack: false,
+		  numberOfColors: 5,
+		  cellWidth: 40,
+		  cellHeight: 20,
+		  useRowLabels: true,
+		  drawBorder: false});	
+		
+	var CategoryTableMain = new google.visualization.Table(document.getElementById('CategoryContainer'));
+			//tableADClient.draw(ADClientDataRaw, {page:"enable", pageSize:5 });
+			CategoryTableMain.draw(ADCategoryDataRaw, {height:'240px', width:'675px'}); // roughly 10 rows, 4 cols
+			var options = {'title':'Agrodealer Client',
+			'width':500,
+			'height':400};
+	} //end entry table
+
+/*************************
+**************************
+GENERATE CUSTOM CLIENT TABLE 
+The heatmap uses category data
+**************************
+**************************/
+	function generateADClientTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();		
+		var ADClientDataRaw =  new google.visualization.DataTable();
+		
+		//ADClientDataRaw.addColumn('string', "Agrodealer Name");
+		for(var  i = 0; i<numCols-1; i++){
+			ADClientDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		ADClientDataRaw.addRows(numRows); //make table
+		
+		//populate table with 
+		for(var j=0 ; j<numRows ; j++){
+			var entryDataRows = EntryData.getNumberOfRows();
+			/*for(var m=0 ; m<entryDataRows; m++){
+				if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+					ADClientDataRaw.setCell(j, 0, EntryData.getValue(m,0));
+          alert(EntryData.getValue(m,0));
+				}
+			}*/
+			for(var n= 0 ; n<numCols-1 ; n++){
+				ADClientDataRaw.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+		
+		//ADClientsPieChartContainer
+//		var tableADClient = new google.visualization.Table(document.getElementById('ADClientsTableContainer'));
+		var tableADClient = new google.visualization.Table(document.getElementById('CustomerContainer'));
+		//tableADClient.draw(ADClientDataRaw, {page:"enable", pageSize:5 });
+		tableADClient.draw(ADClientDataRaw, {height:'240px', width:'675px'}); // roughly 10 rows, 4 cols
+		var options = {'title':'Agrodealer Client',
+		'width':500,
+		'height':400};
+
+	}//end custom clients
+      
+/*************************
+**************************
+GENERATE CUSTOM SMS DATA TABLE 
+This is the custom SMS table on the front page, which also lends information to the barchart in the sales tab on the right
+**************************
+**************************/
+
+	function generateSMSDataNewTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		
+		//remove existing data if applicable
+		if(SMSData.getNumberOfRows()!=0){
+			for( i = 0; i<SMSData.getNumberOfRows(); i++){
+				SMSData.removeRow(i);
+			}
+		}
+		//keep columns
+		for( i = 0; i<numCols-1; i++){
+			if(!selected){
+				SMSData.addColumn('number', response.getDataTable().getColumnLabel(i));
+			}
+		}
+		
+		//select an ID to show SMS
+		selected = true;
+		SMSData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols-1 ; n++){
+				SMSData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+    
+		tableSMS = new google.visualization.Table(document.getElementById('SMSTableContainer')); //draw custom SMS table
+		//tableSMS.draw(SMSData, {page:"enable", pageSize:5 });
+		tableSMS.draw(SMSData, {height:'240px', width:'650px'}); // roughly 10 rows, 4 cols; scrollbar automatically added
+    
+
+		//draw raw SMS data under Summary tab
+		SMSDataRaw =  new google.visualization.DataTable();
+		SMSDataRaw.addColumn('string', "Agrodealer Name");
+		for(var  i = 1; i<numCols-1; i++){
+			SMSDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		SMSDataRaw.addRows(numRows);
+
+	for(var j=0 ; j<numRows ; j++){
+		var entryDataRows = EntryData.getNumberOfRows();
+		for(var m=0 ; m<entryDataRows; m++){
+			if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+				SMSDataRaw.setCell(j, 0, EntryData.getValue(m,0));
+			}
+		}
+		for(var n= 1 ; n<numCols-1 ; n++){
+			SMSDataRaw.setCell(j, n, response.getDataTable().getValue(j,n));
+		}
+	}
+	
+	// Replace with fusionchart
+	//draw barchart with sales data?
+	var chart = new google.visualization.ColumnChart(document.getElementById('barChartContainer'));
+	chart.draw(SMSData, {title: 'Sales Performance', width: 500, height:400, isStacked:true,
+			  hAxis: {title: 'Week Number', titleTextStyle: {color: 'black'}},
+				vAxis: {title: 'Sales in BDT', titleTextStyle: {color: 'black'}}
+			 });	
+	}
+	
+	
+	
+	
+	
+	//end custom SMS table
+      
+/*************************
+**************************
+GENERATE RAW SMS DATA TABLE 
+This is the custom SMS table on the front page, which also lends information to the barchart in the sales tab on the right
+**************************
+**************************/  
+	function generateSMSDataRawTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		SMSDataWithName =  new google.visualization.DataTable();
+		SMSDataWithName.addColumn('string', "Agrodealer Name");
+		
+		for(var  i = 1; i<numCols-1; i++){
+			SMSDataWithName.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		SMSDataWithName.addRows(numRows);
+
+		for(var j=0 ; j<numRows ; j++){
+		var entryDataRows = EntryData.getNumberOfRows();
+			for(var m=0 ; m<entryDataRows; m++){
+				if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+					SMSDataWithName.setCell(j, 0, EntryData.getValue(m,0));
+				}
+			}
+
+			for(var n= 1 ; n<numCols-1 ; n++){
+				SMSDataWithName.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+	}
+		tableSMSRaw = new google.visualization.Table(document.getElementById('SMSTableRawContainer'));
+		tableSMSRaw.draw(SMSDataWithName, {page:"enable", pageSize:5 });
+	}
+</script>
+<style type="text/css">
+body {
+	font: 62.5% "Trebuchet MS", sans-serif;
+	margin:0;
+	padding:0;
+	background: rgb(238,238,238); /* Old browsers */
+	/* IE9 SVG, needs conditional override of 'filter' to 'none' */
+/*	background: url(data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiID8+PCEtLSBTa2l0Y2ggMS4wIC0tPjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIgeG1sbnM6ZXY9Imh0dHA6Ly93d3cudzMub3JnLzIwMDEveG1sLWV2ZW50cyIgdmVyc2lvbj0iMS4xIiBiYXNlUHJvZmlsZT0iZnVsbCIgd2lkdGg9IjYxIiBoZWlnaHQ9IjczIiBvdmVyZmxvdz0iaGlkZGVuIiBza2l0Y2hEb2N1bWVudFR5cGU9IjIiIHNraXRjaFZpc2libGVXaWR0aD0iMS4wMDAwMDAiIHNraXRjaFZpc2libGVIZWlnaHQ9IjAuODI5NTQ2IiBza2l0Y2hDdXN0b21Db2xvcj0icmdiKDEwMiwxNTMsMjU1KSIgc2tpdGNoQ3VzdG9tQ29sb3JBbHBoYT0iMS4wMDAwMDAiIHNraXRjaEJydXNoQ29sb3I9InJnYigyNTUsMjU1LDI1NSkiIHNraXRjaEJydXNoQ29sb3JBbHBoYT0iMS4wMDAwMDAiIHNraXRjaEJydXNoU2l6ZT0iOS4zNzUwMDAiIHNraXRjaFRvb2w9IjAiIHNraXRjaFNvdXJjZVVSTD0iIiBza2l0Y2hFeHRlcm5hbEFwcERvY3VtZW50UGF0aD0iIj4gICAgPHJlY3Qgd2lkdGg9IjYxIiBoZWlnaHQ9IjczIiB4PSIwIiB5PSIwIiBmaWxsPSJyZ2IoMjU1LDI1NSwyNTUpIiBvcGFjaXR5PSIwLjAwIiAvPiAgICA8aW1hZ2Ugd2lkdGg9IjYxLjAwMDAwMCIgaGVpZ2h0PSI4Ny45OTk5ODUiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB4PSIwLjAwMDAwMCIgeT0iMC4wMDAwMDAiIHhsaW5rOmhyZWY9ImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBRDBBQUFCWUNBWUFBQUJHVy84QUFBQVlGV2xEUTFCSlEwTWdVSEp2Wm1sc1pRQUFXQW10V1hrOFZkM1gzK2VPWE5kd1hXUjJ6Zk9jSWZNOFo1NHJYUE40NlpvVlpZaVNhSkNFSWtRaVNvVkVSWVlHcFZRMEVSbWlKSktFeXJ2MTFQTTh2M2Y0N3oyZnp6bm5lOWY1N3IzWFhtdFBhMTBBZUs5UW82TENVV3dBUk5CaTZJN21SaFIzRDA4S2ZoZ2dBQWNZZ0JaUXBQcEZSeG5hMjl1QS8vUDZPZ2paOEhvaXYxSFgvMG43M3orUS9BT2kvUUJBN09GblgvOW92d2lJcndDQWJ2R0xvc2NBZ04yb1R5dytKbW9ESDRhWWd3NFZoTGh5QXdmOWhWczJzTzlmdU84WHg5blJHSEpHQVdBZ1VxbjBJQUNZWjZHY0V1Y1hCT3RoSVFLQVk2ZjVoOUJnTVFyRWVuN0JWSDhBZUgwZ1J5NGlJbklENTBBczVmdXZlb0wraGFsVTM3L3JwRktEL3NaLzlRV1doQTJiaEVSSGhWTVRmLzM0LzN4RWhNZENlLzI2Qk9HVEdCM21aQTNmWE5CdUNYNVVVeWVJdVNIT0RRNnd0UGt0cjRxS01YTDhMVzhMaWJGMGhwZ0RjcDRHeDFxNC9NYlRzV0V1aGhEelEvbjNzRWpyRFQ2MEU0cWI1bXRyQnpFN3hHSiswY2JROWh0dG9kU1RncDNkZm5Ocy9BTk1UQ0dHb3dqbFRvOTAvTU1Qam81eitpTlBTZ28ydHYzREQ2VmFiZmliQmZLenFYU0lmdW1ES2d3SU45OW9Wd1RLNjZKaTdEZjAzR2pySVMzYzluZGZVQk9CZExNTnpvWjhOU0Q2VjM4M2RBdU9DWGEyZ0hLb001b3RodTY4d1lGOVJQTUhocGhaUWd4MVF5c0YweTMreUEyaXduK05hVmdXN1V5UGRkeXdneGpFZ1FFMGx3MGJic2l6L2FrbUc3YUZOa0dYQUROQUJYUVFBSHdCRGZ3QUZHQURqSUhKN3ljRnltbFE1Z2NpUVRpODZSVFdQMSt3VTlqSDJMZllaOWhSN0lzL01sanlOdytFQUgrSS82cnJYK1doM0Fra2dZK3cxZ0FRL2FjMURDOUdENk9Oc1lGUEEzaXJZRFF4Vy81OGV6amJQUHNILzlZMUNKYVYvMTIzMFcvdDQvNnR2WGRJR3YyL2xmSDl1OFQvMU1rTVRFQUxCUDFoS05VcXpTaDkvMVArbng3alRIRW1PQXVjR1U0YXZSOTlHZDJMN2tEZlJiZWhtd0VGZlJQZGd1NUR0Mi9nMzNyOWFZVUtKUnRXMmJCd05MQ0dWZ3dBc2I5KzBmNjA5eDlXaXYyYjhic0dGaGtXTmVBSVM5RkFHUHdXOG5jTHJyKzBEdmtmdGNSQ2hpOXNNUlJ5cmYvMngyKzlNQkxRdW1vWUk0d3V0RE8wTVlZTHd3dmtNWnVoeFEweCt0QUhhbEQ2anhmL3N6ZnlJUENYdGVOKzlTVU1UTUYrUk1RRUpNVEFzUVNNSTZNUzZTRkJ3VEVVUTdoYUJzaFJMR2wrQ25JVUZTVmxWYkN4OW01d0FGaDAvTFdtSWx6OS84aUNWQUJRVzRCalhmSWZXY2dKQUs3RGVZWGYrWTlNQXM0QmxnNEE3dWI3eGRMai9xb1BzL0hDQWdKZ2hiT0NCd2dDVVNBRkxhSUMxSUUyTUFDbXdBcllBV2ZnQWJ6Z0dBNEdFVkRqZUxBYnBJSk1jQkFjQnNkQkVTZ0ZGZUFjdUFBYVFUTm9BeDJnQjl3SGo4QXo4QXFNZ2tud0FjeURyMkFOUVJBOHdveVFFUjVFQ0JGSFpCRVZSQlBSUTB3Ukc4UVI4VUI4a0NDRWhzUWl1NUYwNUNCeUZDbEN6aUExeUNYa0d0S0IzRVVlSXkrUU1XUUcrWXlzb3RBb0lvb0RKWUNTUUNtaU5GR0dLR3VVTTJvSEtnaTFFNVdFeWtEbG9ncFI1YWc2VkJPcUEzVWY5UXcxaXZxQVdrSUROQk9hQ3kyTWxrZHJvbzNSZG1oUGRDQ2FqazVCWjZNTDBPWG9lblFySEl0UDBLUG9XZlFLQm9jaFl5Z1llZWhKQzR3THhnK3pFNU9DeWNFVVljNWhtakJkbUNlWU1jdzg1aWVXR2N1UGxjVnFZUzJ4N3RnZ2JEdzJFMXVBcmNKZXhYYkQrVHlKL1lyRDRiaHdramdOT05vOWNLRzRYYmdjM0NsY0ErNFc3akZ1SExlRXgrTjU4TEo0WGJ3ZG5vcVB3V2ZpVCtMcjhEZnhBL2hKL0RjR0pnWWhCaFVHTXdaUEJocERHa01CdzNtR0d3d0RETzhZMWhqWkdNVVp0Ump0R1AwWkV4bnpHQ3NaV3huN0dTY1oxd2drZ2lSQmwrQk1DQ1drRWdvSjlZUnV3bXZDSWhNVGt3alRGaVlIcGhDbXZVeUZUQmVaN2pDTk1hMFEyWWt5UkdQaWRtSXNNWmRZVGJ4RmZFRmNaR1ptbG1BMllQWmtqbUhPWmE1aHZzMDh3dnlOaGN5aXdHTEo0cyt5aDZXWXBZbGxnR1dPbFpGVm5OV1ExWXMxaWJXQTlUSnJQK3NzR3lPYkJKc3hHNVV0aGEyWTdScmJFTnNTaVV4U0p0bVJJa2c1cFBPa3U2UnBkank3QkxzcHV6OTdCbnNGKzIzMmNUS2FMRW8ySnZ1UjA4bVY1Rzd5SkFlT1E1TERraU9VNHlESEJZNkhIUE9jN0p5Yk9WMDVFemlMT2RzNVI3blFYQkpjbGx6aFhIbGNqVnlEWEt1YkJEWVpiZ3JZZEdCVC9hYUJUY3ZjZk53RzNBSGMyZHdOM00rNFYza29QS1k4WVR4SGVKcDVobmt4dkRLOERyenh2S2Q1dTNsbitUajR0UG44K0xMNUd2bGU4cVA0WmZnZCtYZnhWL0QzOFM4SkNBcVlDMFFKbkJTNExUQXJ5Q1ZvSUJncW1DOTRRM0JHaUN5a0p4UWlsQzkwVStnOWhaTmlTQW1uRkZLNktQUEMvTUlXd3JIQ1o0UWZDcStKU0lxNGlLU0pOSWdNaXhKRU5VVURSZk5GTzBYbnhZVEV0b3J0RnFzVmV5bk9LSzRwSGl4K1FyeFhmRmxDVXNKTklrdWlXV0pha2x2U1VqSkpzbGJ5dFJTemxMN1VUcWx5cWFmU09HbE42VERwVTlLUFpGQXlhakxCTXNVeS9iSW9XWFhaRU5sVHNvL2xzSEpiNUdoeTVYSkQ4a1I1US9rNCtWcjVNUVV1QlJ1Rk5JVm1oVGxGTVVWUHhTT0t2WW8vbGRTVXdwVXFsVjRwc3l0YkthY3B0eXAvVnBGUjhWTXBWbm1xeXF4cXBycEh0VVYxWWJQczVvRE5wemMvVnlPcmJWWExVdXRVKzZHdW9VNVhyMWVmMFJEVDhORW8wUmpTNU5DMDE4elJ2TE1GdThWb3k1NHRiVnRXdE5TMVlyUWF0VDVweTJ1SGFaL1hudGFSMUFuUXFkUVoxeFhScGVxZTBSM1ZvK2o1NkpYcGplb0w2MVAxeS9YZkdvZ2ErQnRVR2J3emxEWU1OYXd6bkROU01xSWJYVFZhTnRZeVRqYStaWUkyTVRmSk5ubG95bTdxWWxwa09tSW1ZaFprVm1zMmI2NW12c3Y4bGdYV3d0cmlpTVdRcFlDbG4yV041YnlWaGxXeVZaYzEwZHJKdXNqNnJZMk1EZDJtZFN0cXE5WFdZMXRmMjRyYjBteWI3WUNkcGQweHUyRjdTZnVkOXRjZGNBNzJEc1VPVTQ3S2pyc2RlNTNJVHQ1TzU1MitPaHM1NXptL2NwRnlpWFhwZEdWMTNlNWE0N3JzWnVKMjFHM1VYZEU5MmYyK0I2OUhpRWVMSjk3VDFiUEtjMm1iNmJiajJ5YTNxMjNQM0Q2NFEzSkh3bzY3WHJ4ZTRWN3QzcXplVk8vTFBsZ2ZONS96UHQrcGR0Unk2cEt2cFcrSjc3eWZzZDhKdncvK0J2NzUvak1CdWdGSEE5NEY2Z1llRFp3TzBnMDZGalFUckI5Y0VEd2JZaHhTRkxJUWFoRmFHcm9jWmhkV0hiWWU3aGJlRU1FUTRSTnhqY1pPQzZOMVJRcEdKa1EranBLTnlvd2EzYW0xOC9qT2VibzF2U29haWQ0UjNSTERBUSs1ZmJGU3NmdGl4K0wwNG9yanZzVzd4bDlPSUNYUUV2b1NaUklQSkw1TE1rczZ1d3V6eTI5WDUyN2gzYW03eDVJTms4K2tJQ20rS1oxN1JQZGs3Sm5jYTc3M1hDb2hOU3oxUVpwUzJ0RzBMK2x1NmEwWkFobDdNOGIzbWUrcnpXVEpwR2NPWldsbmxlN0g3QS9aLy9DQTZvR1RCMzVtKzJmZk82aDBzT0RnOXh5L25IdUhsQThWSGxyUERjeDltS2VlZC9vdzdqRHQ4T0FSL1NQbmpwS09KaDBkUDdiMVdGTStKVDg3Lzh0eDcrTjNDellYbEo0Z25JZzlNVnBvVTloeVV1ems0WlBmaTRLTG5oVWJGVGVVOEpjY0tGays1WDlxNExUQjZmcFNnZEtEcGF0bElXWFB6NWlmYVNxWEtDK293RlhFVlV4VnVsYjJudFU4VzFQRlczV3c2a2MxclhyMG5PTzVyaHFObXByei9PZnphbEcxc2JVemRkdnJIbDB3dWRCU0wxOS9wb0dyNGVCRmNESDI0dnRMUHBjR0c2MGJPeTlyWHE2L0luNmw1Q3I1YW5ZVDBwVFlOTjhjM0R6YTR0SHkrSnJWdGM1VzdkYXIxeFd1VjdjSnR4VzNjN2JuM1NEY3lMaXhmalBwNXRLdHFGdXpIVUVkNDUzZW5hOXV1OTkrMnVYUTliRGJ1dnRPajFuUDdWN0QzcHQzZE8rMDNkVzZlKzJlNXIzbSsrcjNtL3JVK3E0K1VIdHc5YUg2dzZaK2pmNldSMXNldFQ3V2VYeGpRSCtnNDRuSms1Nm5say92UDdOOTlualFaZkQ1MFBhaDBlZit6NmRmaEw5WWVCbjNjdTNWM3RmWTE5bkRiTU1GSS93ajVXK2szelNNcW8rMmo1bU05YjExZXZ0cTNHLzh3MFQweFBmSmpDbm1xWUozUXU5cXBsV20yMmJNWmg2OTMvWis4a1BVaDdYWnpJK2tqeVZ6VW5OWFBobDg2cHQzbjU5Y29DK3NmODVaNUZtcy9yTDVTK2VTL2RMSTE0aXZhOHZaMzNpK25WdlJYT2xkZFZ0OXR4Yi9IZis5OElmMGo5YWYxajlmcjBlc3IwZFI2ZFJmWndFMGZLSUNBd0g0WEEzaklnOEF5SThBSUxEOEZSdjlZc0RqTGdJNUVMc2lCMUE3MFpydzlET0p2WU9yeHVjeEpESUdFTFl4dVJBZG1GMVpIRms5Mlh4SXdldzBjaVpITnhkcDB6YnVLcDRGUGgzK0xJRVhRa3FVRk9Hbm9ySmk2ZUxEa2xwU2hkSmZaWjNscmlod0tpWXFqYW5ZcURhcThhdG5hbnphNHF6VnBpT2l1MTl2enNEUjhLb3h0MG1DNlF0elRZc1Rsa3ZXemphMVc4ZnR5UGFHRGhHT0o1dzZuS2RjQ1c3UzdtWWVYcDcwYmVuYkQrOG85anJqWGVWempscnRXKzFYNFg4NjRIRGduaUJhc0ZlSWJhaE9tR3c0WHdSVHhDcHRKdko1Vk8vT1pucDFkRUhNdnRpWU9MOTR4d1REUkxta1RidVFYYk83aDVJN1V1cjJuTmlibWhxUjVwNXVuS0d3anpjVG03bVE5WHIvblFOWHNzc081dVFjT3BTWG01dVhlemozeUtHakI0L3R6MDg3bmx3UWN5SzgwUGVrYTVGbHNYYUozQ24rMDB5blYwdW55aDZldVZ4ZVdMRzcwdmVzUlpWQ05VZjEycm0zTmZmT1g2b3Rxa3U3RUY3djBxQi9VZm9TK2RMUHh1bkxUNjYwWEMxcDJ0dnMxMko2VGJLVm9YWDZlbS9iMmZiVUc5dHZhdHhpdXpYVDBkRlplSnZXWmR6TjA3M1E4NmozOHAyQ3UwbjN2TzRiOVVrOVlIbXc5UEIxZjllanVzZkhCMUtlQkQyMWY2WTFLRHJFUExUOGZPekZ3TXZPVjQydnk0ZVBqT3g5RXptNlk4enFyZG80WllJdzhYbnl4ZFROZDVYVFdUTmg3N2QrVUpnbHpnNTlMSnNMKzZReGo1MGZXcWo3bkxIbzg4VndTZndyNjljZnkvUGZwbGZlcnI1ZEcvOCs5ZVBqenkvcjY3LzhiNG95UkN1aTV6QWQyQ3ljRTE2QmdaUGhIV01Qb1lvcGh4akg3TTFpd2FyQkprQmlJdjBrSzNKNGNlWno5WEdqZVRSNGcvbk84QThMOGdvNVVIS0YrMFFKWXViaSt5VHVTakZJVzhua3lqNlZGMUlJVnJ5cWpGYXhVejI1ZVZ4ZFhpTmVzMU9MU2R0SnAxaDNURi9hSU1LdzBXakZSTTgwM2F6Ti9MbkZqT1UzYTV3TmFhdWdyYVNkb3IycWc3cWp1cE9xczd5THVDdWZHNnM3Y1Ava01lTDVZRnZyOWpNNzlucHQ4MWJ6WWZXWm9YYjVsdm50OG5jSlVBd2tCRTRHM1FvdURva1BkUWlUQzhlSHY0MW9wNTJNcEVmWjdKU2dBL3JMNk1zeGgyS0Q0Z3pqK2VLL0pEeE1yRTVLMjdWdDkrWmtZdkpVeXMwOWhYdWpVOTNUOU5KRk14Z3k1dlk5eld6Tkt0dS83MEJZdHYxQnRSeWVuUFZERTdsMzh1b1BIejBTZDNUYk1mMTh5bkZ3L0UzQnpSTmxoYWtucVVWR3hhSWxtSkxKVTcybmEwb1BsdEhPMkplclZuQldmS3Q4ZGZaR1ZYbDEyam5mR3FQeklyWG8ydkc2MnhjcTY5TWIvQythWEJKcnhEUk9YTzYrY3ZacVJwTi9zMG1MMkRYY3RkbldaOWR2dE5XMEg3dVJjalBzbGtlSGVhZkdiYWt1M202V0hsVFB0OTY1TzVOM2grOE4zdS92dS91ZzcyRi8vK05IVHg0UERqeC84dkxwNjJjamc2TkRiNTlQdkpoNitlN1YrOWV6dy9NamkyKytqcTY4UmNiRkoyd25FNmVxMzcyWUliMjMvWEJrOXNXY3pLZjArZkhQTm92WGwxUy9ObnhUWGJtK1p2Wjk2R2ZJYi84cklCOVFwOUJPR0FiTU5Xd2NUaDIzZ0c5aFNHRzBJUEFUNXBtNmlBWE1vU3ltck1Lc1AwazRkaTZ5RE1jV1RsTXUxMDJoM0h0NWp2TmU0T3ZtSHhGWUZlS2dLQW5iaWtTSzVvcGRFTytYV0pUaWx0YVhDWkxOa2Jzb1A2VHdRMGxZMlV3bFdEVjdjNTNhQS9WWlRlSVdLUzBMYlgrZFBib2xldlg2dFFhbkRmT01Vb3pEVE54TkRjd2t6Qm5OcHkyNkxVOWJ4VmliMlhEWWpHNDliMHUzVTdkYnRXOTNTSEhVY2x4eXV1Z2M1aUx1OHNhMXlNM1puY1c5MXlQVlU4dHpjVnZkOXFBZFFqdUd2QTU3Vy9vZ1BtM1VKTjh0dnN0K1RmNHhBU29CQzRFTlFSSEJNc0hUSVZXaC9tR1VzT0h3b2doWEdwbldIM2t3eW1JbmR1ZHRlbXEwWHZUM21HdXhDWEZxY1F2eDlRbGhpWktKNDBtbGNLUnc3UjVJemsyeDJJUGVjM3R2RGh3cjRta0w2ZTBaMmZ0Y00wVXpQMlZkMzU5MXdERmJNUHY5d2FzNWV3OVo1M0xsanVYVkhZNDdZblNVOWVqcll6WDVjY2VOQzBnRkl5ZHFDeE5QbWhWeEZJM0JYVFA1bE0xcDN0UFRwVTFsR1dlY3lzWEwxeW9HS3krZXphN3lyOVkveDNmdWE4M0ErWWJhbkxxUUMrYjFFZzJZaG9tTHR5OVZOS1pmOXI5aWRWV3JTYWxac2tYb0duY3J4M1ZTRzZtZDR3YmZUZkZiS2gwbW5SNjNvN3Z5dWh0NkJucFg3bEx1N2JnLzltQi8vK1pIa3dObFQ0TUc5WjdMdkpSL3ZYVWtiL1R6ZVBLVS9BejRzUGlKOE5sd0tlL2I0dmZJRGYvL2xTUGIyQk53NmdCVXdweUk2ek1BWEtML3d1TDZjUC9vQThDZUdRRG5MUUMxVHhDZ05oRUFrdFAzOS82QndGMEVCNWhnTm9VWFpsY1VnUTZNTXoxZ3hMMEw1TUZvOGhxTUgyY1FOTUlIbzBRcnhBOUpSZ3FSS3pBSy9JUmlRY21qdHFJaVVVZFFWMURQVVQvUUltaExkQlM2RUdZU1BzQzl5QWhEdzVSZzdtRldzRkl3THN2R3RtRS80VVJ4N3JoY1hBL3VKMTREVDhkZndMOW5rR1FJWktpQ3E1VTBZd1RqSmNabGdoNGhrOURQeE1zVXdIU0ppQ05TaWUzTS9NeTdtZCt3R0xQVXNKSlpVMWcvc25teFBTRlprM3BnTE5ORHRpRS80NkJ5TEhDbWMvRndYZHJrdU9rYmR4bVBGYzh5YnpXZkJ6OHpmNWRBaXFDVzRJcFFLeVZaMkZpRUtQSmN0RW9zWHR4S1Frd1NrUnlWNnBTdWhpdGRnbHlBdkpPQ3FhS1drckt5aklxRXF2aG1TVFZaZFJVTmJVM2xMZEphNHRxaU9tSzZVbnFLK2xvR1ZvYmJqV0tNODB6cVRRZk1WaTBrTEYydHNxMDdiWDdZbXRnZHRSOTMxSFE2QkhjL1E3ZFM5M1ZQNnJhZUhmSmVCVDRJTmRMM2piOWpRRytRUWZDMVVNT3d2b2p0dFBtb0EzU0o2THV4TytPRkVwNG01ZTYyUytIWTh5YjFZbnJXUHQ4c2d3UE0yVU01NWJtUmh3Mk9rbzVOSEw5Mkl1OWtjTEh4S2NycDliS3g4dTdLK3FyQ2Mvdk94OVo1MWh0ZlZHd1V1c0xlUkdqQnR1TGFtRy93M0pMdE5PNmk5bVRlYWJ6MzlnRlB2OHZqZ3FlOGc5VXZWRjlkSDlFYXZUd3VNcG4xN3UxNzFkbWt1WmI1dVVYS2t0Vnk5TXJKdGVzL1JuK3RId2hBUS84VEFSa0l3SHpEWnBneGNZSTVrUVJ3Q0ZUQ0hNSVFXRVRZRUNuRUNObU9KQ0Q1U0NQMC9XY1VHYVdHY2tmdGh2SDlIZFE4bWh0dGhJNUFuMFQzb0JjeG9oZ25UQWFNejJkZ1ZPNEFZL0YyN0JlY1BDNElWNEY3Z3hmQWI4ZVg0SWNaS0F6K0REVU04NHlhakttTWZRUnVRZ0RoTWhPYXlabXBpb2dpQmhFZk1tc3lWOEtvTjUxbG1UV0M5UjJiSDlzNEtZZzB4NTVJeHBOUGNpaHkzT0gwaC9GbzFTWVhiZ0wzYlo0OXZMcThQL2s2K2JNRm5BV0ZCUmVFdWlsRndqRWk5cUtLWXV4aVg4VkhKUjVJdGtrMVNGZkpsTXFXeUJYTG4xYW9WS3hYYWxXK3B6S2l1cVRHcWk2bllhM3B0U1ZXSzArN1Z1ZWU3cXcreVVETE1NQW8zN2pIWk0xTXhaeG1VV3Y1MFZyRkptRnJ0eDJQL1U2SFBpZHA1LzB1czI0TzdxMmVFdHZ5ZDJDOUVyem5xTUcrNC81K0FSTkJvY0h6b2FuaEhCRzFrU1pSWS9UVUdMSFl2dmpZUk5Ha3A3djNwK2p2V1VsdFNVL2NwNStGMjkrVG5aRmpuSXZPNnoyU2ZjejJPTG5nUldGcFVXQ0ovS21sMHZZeldSV09aNFdxWnM5ZFAzK3d6cmFlM0RCOHFlWnkvRldMWnI2V2hkYjdiVlUzOXQwSzZMVHNVdXpodW9QY25iMy84c0g5L3ZiSGw1N1FuOGtQdm50ZTl0THROV0c0K1kzZkdPUGI4eE1Xa3lQdmFOT3I3OU5tMFIvM3pxM05SeTJNTHpwL3VmVlZkcmxnQmF3R3JUMzRvZmF6K0xmL01ZQVJrQUFma0lTWkpqTTQ5eU5BT2lnR1RXQUF6RVBmeXlHV01DT1VCWE5BZmNnOGloT2xnL0pISFVLMW9DYlFKTFFCblBGbjBFOHdlSXdPSmhwekhqT09GWUN6UFI4N2dHUEhPZUdPNDE3Z2hmQ0IrQWI4S3N5aTVETk1NS296SG1COFExQWo1QkptbUV5WktvaE14R1RpWitaUTVpbVkzNWhtaldSZFk4c2hpWkp1c3Z1U21jaXRISkdjc3B3ZjRNeE81WGJsVWVKbDRaM25HK0x2RkdnVXJCSXFwUlFMbnhLcEVLMFhheE8vS3pFa09TT055UERMYXN0NXkrOVh1S280cGN5djRxWjZZdk1yZFRHTktNMGJXaVR0RUoxdVBUSDlBd2FMUnI3R2c2WjJabjBXZHBhRDFuNDJpN1kwdTBrSGI4Y1JaMitYS2JkSTk1K2VoN2RMN3VqdzlxRmlmR3Y5M1FKeFFkZERvc0lrdzhkb1pmQnNMaG05RUhzalBpL1JiNWRPTWxmSzB0N25hVGN5YWpJTDlpZGx1K1NvNUpMenZoMFpPZFo3dlBGRTJjbkR4V21uNGtyRHp3UlUrSnoxcnZhcW9kWTZYVkJ1WUwzNHNiSHZ5dm1tckJiZlZxMDIxdmJSbS9VZENiZDF1MEhQelR1NzdxbmQvL2lndk4vak1jdkFnU2YzbnlHREdrUGh6OHRlREx3Q3IrV0huVWZpM3hTTTFvOTF2SDB3UGpqeGJQTHhWTmU3eHVtU21lVDMzaC9VNElseCtHUDFIUDJUK3Fkdjg5Y1dZajRyZko1WkxQbGl0NFJhdXZoMXh6SmgrY3EzSFN1NGxRdXJqcXZmMWs1OTEvOCs5aVA5cCtqUHpuV2ZEZjlIQjZyQ25DVzhFS0lSVEQrT3JLOHZTc0JjNVZFQWZoeFpYMThyWDEvL1VRR0RqZGNBM0FyLzYzK1hEVElPNXVwTG1qZFFqM0ZjMU1iNzM5ZC9BU1lZeGZqdUZqVHJBQUFwNmtsRVFWUjRBZTE4QjNpVXhkYnd2SDFiZHRON2dWUVNJQkJDQittSWlGTEVpTlFMQ2lyVkMzWkZpZzI5NGhWRmJGY0JDNGhVS1FLaVZHblNJWlQwU25xeW05MXNlL3QzWm1YekpaUVF2ZDcvZWI3di8rYkp1ek56WnViTU9WUE9uRGt6RTBKVlZmUlh1d3RyNS91R3hMWVBZK3VyQmx0UEgrL0Z0dlhmR2pnbzhpeWhtSGFvREZXbnlNaE5xbXFKS3JuektJb2tKWlhVeTR4aG4wLzB2S04vTlMyM3cwZjhsVXpYSDFyYnhuM3A1QUozZUlDZTBRVzFzWDM5L2lDTkF0WHFHUlN5NEpIUHRHMjVQa3BKWFFlQ050aFZFbWtRd2RJSTRVWW5aWWxRWExLaVhsR29rT2NOYldjZnVSMnhmeFdNV3JKa3liK0Zpd0EzZ0RoTUU3bS9URzI0Y0hnemYvcjBBSDFDdS9Md3NZdnVxODAvS2VzSmR6OUh0cGtVelJWR3NXM3ZVU1Fic0lhaDVRa0tvcXdxUVZWQWo3dFZtcmxBSU5yR3FueDNDcmxIT0t0MzkxWWF5aXVPWHR4ZUprbVpqTDkvRC9uZkl2S213dVJOOFQ4Y3pYbDl4S293VlJYRjB5Zi94WnJML1RrampVai9xRktNS1BtRjc5L1FQSkl4SW1CYVo3ZXp3SnhvTzJDYnE0dWZleDR4YXFHaXloR2tJdXRsa3F1aVJXZFBVbkMwYzJpN0ppbmFtTC9yVlRSR29SUmpXa0xrbUJpMTdoeGZ1RHJwRHhQV1FvRS9QYnlMMXM3dlRCWmVQU0FXNXZneE9ncFJlaFpHS1lrSWw0QnMvc0ZuNlY2djlJa2ZQcHgzMWEvNlNLT1Z3aXNPbWZjVHRvQ2RBYW1DTDJJZEZ5bFpyWlZJcGtvbGxRQ1dkMVh6R3AvREZCVlVwMG9WMDVCSUxPTVNGbjZHUjVFajk5WExqTXluaUlqOVJKZjArcXdXZUdsMTBwL3FhZlBGTGUzUjFSTW54THhzUDMyb0hoRkdIVklRaWR3dUVja3dUVFg1MTlOMTlhZldZQ29vdTF3ajJWQlorTENscThJeTVwV29PbkVJSWRpUVRPdjNzVWkxMHBMQTJianUvU2tpL0RQYWtibUVrZVVnTjJmNEdaY0ZlYU1TS25xTTFuTFZ1bUR1U2FGaDZ4Z014NDJCL1Qvci9oVFROVy9OZjQ5eVdqUnNoQkZKTU50a040OFVyY0dtSC83WVFaRmlFYWVqa2ZQa3J2RTF2MzJZd0RQV1VydWIzTmhJb01nL1RsSCt4U29kOHEwcXUzdUxpTXYwYlRPNkhnbjV6eVBTZ0hpQ3lUbGZZQzN4NW5kWElLY3M4WG0yek1MelZkdTNUeTE4Yi9MSmkzTlRlM2pULzR3UDByUDFybWpQMnA1eVRmWjdVbUxiSU5sU2hUaFJSaEpGSVVhUWthd1FSbU9ISVJQZHhUbFAyUGYvdklSQlpxVG01Nnlta3FjdjJIc2s5MXhHRkVLMnFuVVROQXFmNHRaMzcwYko1cDZDYWtjcUc1aUpLVkFWbTFFaHRSQ2duUU1HdkNKdDJyU0pTaTNjOWlGWG1UWFJUcmxZdnN5bHBSa3luWUZ1MGlycTN0SWZQeGdYTmVMcG4xcFAvWC9uL0VNOTdUNjhmZ2RiVU5pbC9ldUhFNFhFdEZXU3pZMFVqTUZIZytTS0tsUi82ZERDTnJPK1hFcDNTejFHd1Vyay9HbDNYOXVXUGNNek1qSTgwaGRFZUcrVjBKMVZuSFVscEx2NGJ3VEJJVlcwN01Ua3VPbGdDUVFiNGd3Qm0zQzh0LzMwTzFUbXlWbFN0ZG1rMkNRdEUyS3dVV0grWmpYRUI3RSt0TW0xKzlPOXhSdVdmb3p6L2xIWEtxYlBudjJjY2ZIL21odVJGbmlOY09abzNOTDZmdHlBZTFlN0RRYVpocUhOT3dTRUpCVUpoN2ZNYWlqTENtQkh6eC9sWVBXaUxDaklmbVhqSkV5VXBlS2JhRWFvbnlReFBodEpJamVHUU5aT0JLRlZhQkhFQVhaczlBWUZRWVNGUlIxYzBaRmRWWnJCbzFZR0xGbjNpdUZ2Yjh6eW5iSHlJWlRTdjFheU9SR3QxeUc5SkNMbnR0VXp6VWMzTGNENS80aHJGZE5wQnNzSG5MM3NDWWVsU3NPNzdEem52dlphaU5aOVArT1Q4ck5vRnBCbTBManpaUHZrQWpYL09qSWYzL1pPUkx2QmRVSFRYdms3d3N0WG1TV2g4b2VsanhnTnlsQkNWb3YwMFgvL0I2WHhDd1Z4eEJBa09xcEplZTBYVERCSmloWFFia2dSTENVNDNtZk4xWGNqcDc0L3p5Kyt6MXNCdmNkOVl0bS9kb1o0ZkdjaW9XT1JJa2tJK1JxUWo0bEJ0UnZlZnE5NnkvSlVYS2ExN3E1TTErVjgzazVWS21ZcVpPZ3VKYWp2MTRwVjVRZzc5eFdwRGR6T2RVNysxZ0hpbGVTZFA3TlJuZitsZ0lRZ0wrMmVWbkYrZDB4QXQzRWY2d1psN0pidEV1TFA3MThpdTYzeGZDQXpHeE5HdU4xVElTZk01NURkV0VKakdNWFhUR1QwUHJMVHBXdWNwNFZ2anVoWHVtYmUrc0lYZTlqVlUwZkdNWjQxZ2tBRUxJMktJQ0V5QUZZT3F4bTU4czcvSGVOb3Jic3IweHhUTTkvTm1NNDFDRDdydzhjdVhhV21ENytTdDZ2NEdodVprYWtmOUhpK1Q1Z2ZjaDdibXl5NEcwcVlVQjhrRjE4bitYTUhGbUVDMkxSaHo1RHhmangvSkRlNWJ2UEpYajUrTHgzRGNFS1ZBZ2hWUVRJeUhjUng3QmpKMGcwbTZ3OVNtVWFYdXl6amc5TFhldGZLaGRjTzhEOXNHMCtWVk9uSkdEK0VrdG9oVmFOSElrd2JsU0tneHhXazlhR1JYSmN6cmZxM0xhM3U3UmFaZHVaOW1zYXFyZ3lSRG5uY0wyU2lSOHI2anA0Mnc1bmMzNElKTmZwSG5LU01nZm1rMWZHZ3R2ZURUaFNSL0l0aWxaQk9SeGx4ZWtEaWdDdzZ1TTFBN2FnaGVYVDRJTS9hYXkvOXRBT2h1UHNyS25WTUd6bmhGTTZISFJrWWFxNC9kR3BzOWVjdkY5UFpaK2NKK1JVQlhGUkl2Zkhoa2UvcHh6MjVUaldGSTlidFFKVERoamdlWkFqbzdES01FVXJMSXJHMkRvbFhEcy8zSUdyRlQ0dE1JOGI1T0NPTGZscXA2cWpsNm92UkdGOXdUTnFKMUQ2VHNyMjR5ZGp1eDBRM2lLQlRPNlpKTWQyM0lWQWJoSnhqRCtmdGZMODl6aFB6MHM0VFVYLy9KaUZvMVBRM2Nkd25ldVlWRVpIcmVjYjRBWTVqNThyNU5FS1IrV0pyWWVWbVJxVm8wdDk0d1RoZzdGVFVLZU5WUWFWcXhJcXNCQ3J6Q2hJdUZTS1JKQnVrUUdobzZHeFNVWkJBVU1pSEpwRjArZGpVNmwrL2FGVnYzM0dkYnFqZTNKdVJ6TE1seW5pWklFMXY2T1RTdlVMZXEyNkswUmZKZkMzclluMTNFdjVobTZoZ2FyOWdFYWRRV1hrcHNjcytHcFdmdjc5Tnc3bXJ6NFYydGo4SS9GenhjTlhrNThZY250Z0VoTFNKVDVYVlpyL3diRW1QSWE1Z041cUlVb2orVkhYQncrS2x2ZE1KczVNVUdtRCt4Z1lnS3FuM0QxeEtyeGZ0QlZsVG1XUGZ2MGdhV0VUQTJxajY2eEZmWmthY3RmNGh3SHVwS2U3YmhXL0xkTldsNWZvZ3BuWU5Za20zUUNoNldFZkthRm9uVXpLZlJyaXEwaEROT0dHbkVLUFU1aTR6dEtmcWxhbTlFSzB6OHNqOGJrYkVwS2svbHRhdWlxc3JxME13QzF2dEFwUGVhUmdBMjRyeWl1Y2VkTy9ZdWtPQU5ac3gwRWcwY0VpTVN6NUxkYnR2ZEp2aGM2OFhMeC8vTlZkMGFUSUZEQ3R1Q2NrOEtFWWc5cld3OEFrNXA2YURocnJVS3h6dlZQbHROeHkxV1VzVE9aMXZmMGF5elNBUm4wZ3B0RWtobU9PUStWZVJZZm9RU3RRa1Rkc0p4ZnkxVnhNUVkxV295T1J3MGxvNFJxaHBHRXVaQXNJbHUvRWViZkx6Sis5VTZaM2crZTlOZUY0NmZld2RuUytIcU1DUUdtdHQ3WjdBc1hPK0R4bzZlM2ZPcms4akhOOHYvemFJUXdNb0hWQUZ2VStFUlZUSmJkdWZwbXgxaUNyTkNsQVEwVXN6YW5ibjRJRlBYcnhUSFJoK1MwOWZ2YnFValdBZGJVaWtqd01wRzhFZ3pxa1NBcStTaE5aR3NHc0RZbDU0MFl1UVMzNDk5MFk0SDB3Q3YycEMwSUw2NHBjZTAvc0dKQUQ4RHpPdGNqNWRkY1BHWlBLRVBNOHFDS2ZTMy9qTWlmR1g3ZnowRWVMUTE5OEgrWURFQnBuaGNLdklrRDd3QU5XcDc2T2g5MHlyd1hrcVBwKzEwYjF0T3lJcnFnWkF0RVdtYitscFo4ay9IMkQ1NnAwMGdsV1JwSE5sZ3FSaDFraXNTa3B1eFI0clU4UitXbEwySUUyYnJQcDZ4NG1RMUdjZHVOTC9sTXZlL3Q3RHhONjFtelNXQnVUZ0NLU0xUYm9vNkVPZVRYajJLNDlTZyt1MVhOejlRTjNxRjNicVFuV0lENGlhMC9hSnphdGFvdWVXbmlZVloyK0NnTGxFc0xtd29MTFFLcGhwVGlUVktnMWh1b1FrNXhCUXBPK1h4WExrcjVXUU8vL2xZaFhXSG0zNHJPTXRWZlJuMHE2dlh6aFIyZjM5dDVIanUyOW5ndzJwdFhtMjB4SGp2eHZYRk5mU3BVdko4ZTVmUHpCR0cwcUQ1NC9iclpwWnZKNjE2Sm90V1dmUFBnbmRLMDRnRUdXRHBZY0daUXNXQXhqWUJFa1JCRnNOdW1LK1FJRmdvWVB1UVhSQWlzTHBQbGNwRFVjNmk0N0p1Uzg2aE55bDY2d2w2Mk5iclBHUEpOWllKaElNNVJSaitzeFZ1MlVNaUJpUzFGV3NlUGNiczNtbFJ3L0FxSjcwclZoSlhzbUtkV1pXaGR1T1pENEp5dTJBdTFYUmpPbUVrQ0UraENLUWlDUWtwS2dHc0lPNFpWV2lDZGthcU1xV2dhcGtmNVFHNVZFaCtHRWxZa0VCRi8zcWs5bzJpOExjYkhpYzI2ZmpMSktnRTFuK2ZINUQwVDlHMzYzaTFxVHJIeHd3bnJpblQ2aC9oMW1sR2pTa3hHVUwvWUN5VlUvU21rdXR0dUtYUE11ZTIyd2JSWkFFc2xINmY5WlVvNkVrd1JUbTVhM2tXc0xmYkU3WFhQM1k0RWRYbEZLRTRDdFNuQlgwSFkxSUIwelhSOC81MWxHd2ZBSkZPNmFTUE4rUFZHVU9laGdNQ0k1VkZPRzdpazFZZU0xYmlUUHY5VFJKWXlnMlJzNDNlMkYvMUM4cVdxc3hvV3RUU1VWM3hoUzcrRXpUOGcwNTd3VnFDZmM2QWxudVJacVFyeXN1bHE2eW5hMjhrTEo0bzJkWVkwRzhhUk9TRmk5ZS9QdnVyV25oRytGbVRHT1lOZk1sUDlJblpoU3JPcDVoeExvT1BPMjNTaHY3M0J5Y2hzMDBkYm5QUjNESU9KQlc2cDRqS2FZalVtQlBUQXJiQ1BYNkw5WUd2eDhDMDFhVzQ3ei9qcXN2V3VHckZTMlpGSEpHaWpSYmpHVGlVVzM4RzgxV0E3RnM5WEtTejNvR2hxUWltMkxtNkFMbWZ0TGFPbTloMmxzUTc2SFRvNnhmS0tKMUNrbnFEbGNXNmF2dGxXaFQvSmluTjNuenlOWC9HcU9LMStlU29qUlEwQVFjck0yUmw5dk9sOVdsUEwzaU4yK2VQK3ZiODFZR01VVDVDMGgyem1FUXkvR0lyQkpZdi9kTmJWNThCK08wMVd5SzE5aXVYR1FKcGtaVUd3d1MxKzdkdXRKTEgrcjk2TUYrN2Y2eHE2VjY3OGcwTG1ROTkrNDRFTnBMZk5xRWxBcm00cDR1cTI4MkZ4bWZvUW1kV3RRVXFTWC94dzcyODVkR3VnNTg5d3psRnZ6bERwMDdKeTdZME9KYTJiUjhTMkZyeWR0K0RLR2J6MHEyK1pSa05iZ1IrNXNzcXk4WTJyMTEySlgvNWp1SWd2Mm1yUDFZNUV5Y1RMR0N4bEc2VWhURWFjYVV4WGVjWHJjc1dWNEN6aXk0SjlaQUNDczRweVhVRm1SbzV6dHEySSttR0UyMHV6NnpVQ1kvWFU4RlArVVJKRmRYekp4b2xLcmVsTTZmaTZGaEZta0hEenlyUnNmZnNVSXYvcFo4KzlWWEI3RVVXaWFZWXFlWm9sKzhDbmtYTmVSOC9pRkwyci9WRU13d1JYVWU0Z3ZmWEs2TmUrVTVhL202Y1dURGxmSEd1QVgvcUM5YTYwdlJobU1PMlMyMmhQKzJUT2QvT1R2ZXgxRjNVa01LQVpSS29McnNlcVNoZTd4R3Eva21EVjMxTHBKZFA1WmtydmV6Ny9ydUoyMysxVzRLN0cvRklKOEd0Y2Y5aTJMSHY3T2lwUXBiazhZYk5kbTB5OWxPNzh5OW9wUXZxWlVkOXAydzZmbUtpMy83UG1mSis0czBGRDJGbHB6ejNVWEx4dmdvaWtPbTZMYUE5eDhhUG5PMnFvdnhEMHg2dnFHbGVtNFozdnk1VGZHbFd6NDZvU2t2RFNSQzlNaGQ1VUJraDdSMWJaL1o0ckYxWVdTNS81cmRXWE05ZDVOU21oK3YwWkRJQ3RzL09TSzZUL0xDZlY2MUZGWHUrZmhoeFZFN2p3bU9manlvMzlSR2VFdkVORTI3ZnYxOXJaK2JYVXdKVkNZYjR1OHIxWi82aUZDMHVTcXRQNFhJa0FwVnRTWXdjblYvV0dFRTBDdkFZcVptS29RdVVpS0VUdzF0WC8yb0thNmJ3N2YwZE42Mkw4ZjZWRmNHRW9FNkpOVzdFQmNaam9LSEwxaUdDeFpzK3R6a3ZIeHdHWjEzWWlZSkZndUtKWkdaMWxmUjRaRzlrMS9jVlhCbzZWSTZPZFcwUkxpd2JiSlFXQm91TmlnMDJUN2NENWkrdWQ2N3hpTWo1N3ZLejJ6SmFkaTU1Zm1LZ1VucFhXUEREdXI1Mmt4WnNTUVFqSGlkRUxEVm1TdUFUVVlncGFoYTBKNkdTRXpZRTRhb0thdnZodndXcGptd05LcWdqbUhMbFFJbUdZb0IrWmwvOU91NmsxOXZraStjSEdWdzJYdnFZS3Zqc29oSUNBMjY3b3pySEp2K3hHZGkxaWR6M216anpKenQybDlyVXF2dGlOUlFpQjNjNzFkajJ2M1g3MGFFTnoxdjVVcU8xQlR1cHBHUUd6M2pvNmNrM3Y0YldYQWgxWmgzT252UDZMVEVqSXlObEN0ditXclNYdDFYNSt0WGl1dzhxTXhFbVFwNk02bTRaVklwbWdDNC9qalQvbDJHckxkVVgxOUNOSmcxakM5c3BjMW1xdmE3VDdvUVByb3V1dVFPZFlTOTNHM1BCVVBXa0VjT2lvR1J3eVBzNXJUaUR5Yjl3SncvSGtZNVFDczNndmttSlNVcllIakcwNlllaiszek1vUjkyL1dsL29yc0UrTWJzK0I4VTdnM3pJVFdkSEh2MlQrSWNGc0haZFdXZFhYY0c5d3IvZFd4WS9JM0g5cld6ZFRsY2NqMytkN3pNVE9TN0FXZkJrZFVKSVoyNkhoYWRMcVRGWXFxaE0xWGlLQ1NOUm92c2hiOFc0NXF0WEhkYks2YUxIKzVNS3NYeFZHZ2tJQ215cEdJTmhtc1RIS1BrMkp4YmpMZEpqRkhQMkQ4UytqY3p1Y2RoM2Q5UWhRWCt4QjZScFM2ZEZrdkpYU2JpU0xiN0dPazNIdXJON3l4dWZ6aytmaWd2aU4yWUJyRTJrTmZheFRIQjFiem1TKzEvbjFzTjlQbDIzN2dkVmZ4MFNpbHVxeUxsRjhhSGgwWDlDRGJxeU1aMEs2dFhXZGt1OHRDWmxKSzJIV0NaZzNYU0ZMYlQyK2tlT2pwS0VSeXVZUk0rTXFxejdlc2Y4OUd1OXZOK0wzeFc0WTNUdkRyTXVyYm1rdUhGa2lPQmhpbUhLTEIrS2J3RHBOajEvcmhEUFFrbUdnU3JWODgrN1BrY0NBTzVqV1IwckVPOVJqM1FrUFJiNFRSYlh0Uk9QSmovNFphd1NUV2kwZzdwa3RqSFRRUUJ1ZnZpRVdWY1ZETmRaZDVUNlRMWWlYODR4NzFITzNpdXFQbXJadWU5L2xVVlgvc3lIVHJ6ck9kWGFiay9mNUp4Z3VNV0Q1UWR2bHBSRW41SmlpQmRza2lhM0k1WEhhQzBleWtDU0phb3NnS2w0dGRZOEJJN3VJYUNXcWE3OXJSZFpmOURQN1ZsS1UrR09uQTdpakRtU1FZNERpd00rUDVMdHVnTWNEZ3JqSHB3RlFqSXdKV0RmWHN1cGMxWjY3RWdxME9xWHFZenpFQnN2LzlrWG5rL2ZlLzdjVk5FZG9xcExpdzZkT3owWkdWeWpqS0pqaHF2bGs4VXdxUDdseis4NGJ4NlcvL2JMV216NTBWVG1oNk4yemFrU0p1L3ZFWjVvbEY3ZFJ5WjczajEyMS81MkxqN01xZ2UyYXcvcW1XaHRNL2Z1Y3FPbisvYisvdXo3TWg3ZjJDVW1iWXZYVzE1TitXYVN5WWlqNTRORS9PeWcybS9NQ3dEaFpxYkhMRmYvZ0h0bnV3dzZadm5NY2d4R2ZtQnhNTUhVeUUrMVc0b3hLT01WcmZqd0w2aEtacm8zMG1PM25CeDB1QXJOU0hNYXFFR0gyQ3AxNksxUEZPSWlESnN2bXRsd3hHc05YNDZIZm43L3Y0MGZSN1o1VmFRZ3pqWlZuZUt1N2RHeWNjMjdGSUlQU2tsRk1WUUZTWkE2b0xTeGEyZmVONGYwVmIrYVp5ZE5lYStvWWpIMmtlVEIrZ2pmTFcxTEovVzZaeEVUSTgrWDNGY0xhM0lnaElvV0Y1OGw3SUFZbUJIZWdzU0xHRE5VZWxrYlpMSHh1WDNHZXgyVjY2TGlIakxZLzVSakYvOFpCUWVxVXowbk1qVUFBNmpjc1FTSFNyRkhTeXU5alRmTHpObGVXc2QxMGdCZysrejMzbTRDUnRiVU52NmRDM0pSVXV4NHl3VWM5OUlmV2IyQm5PTTY3WWQrMmVZSWpRSTI3SW9GdzUrMHlFVkZiWnIzVFIwSEpTbzE1MnVXVGtIejNvWWtqcTVGYnIrN2NvSjVnNHI2dFlNK3RZdy83ZHZYVmhKamlFbGoyTUF1V1lla1NBRmlacjlZaE1IZjVjMUlUWGxudkw1SzE4OGw2dElieGZjQitUbGlITEYvQjB3RmF1elF0amNicDRkYzUrVlJzMHlFWDd4MnRVbjFoQkl4cDhnbWRzdzJsNWEyYXY1T3JPelVIWjFRanBETWhGYy92SjVJRlROZTBIT1lWRG41NG5jeTlHa3gwN0ZCQ1YxOFBBN3FrbHFweEk0aFZFajM1eUs5RnA4Qk1SN2JyWFlUeXRjWGZzYVZ4WTErMitKYzd6dis1VG9VZFZBMXdHZ3Q0bWNSOEIweEtjTWhEdCsxeEdmcEhiTXVlbWR2UlBqWHdET2V5UlRLRXRxZUZxdFY2cFRTNkxlbXpFUVdScDZHUzcvcVcvTWZKeHM4SVlZMGhKUGd6dFY4T1RKV2YxWXRoY0w1SEdlOXFzOEtGRDBzM3JkL1RpTDlmQ0ZLQUdLeGYzbGpwcThqTDh4Ny9jZzErLzZLaDA1bEljRWVtTEdHQzJBYXloZkZyUDZhbmpYdnJTaTZPMWZqUEx5YzJGVEIxRy9xenJNL29UWnkwUGRpTlFXREMzTklWa09JUUhlWVhVODRjN29GOCt6ak02SEpkY1AxMGVhVDlSM0VXcHRPalZybkVsbWc0OUY4SFVNSkp5UXh5UzdOZzZpa2hLYnlFUUg2b2o2cmZwVmQ0a0NaYU8zanAxZXVlWFdqOWZsa3dmK2JxbzB6bzRmSTFEZFNMdTJybE4vSkd0cjRpbWdPTTAzRzJoUlFIeGNJYkZEUjMwZE9yQ2pYK1lZUThkM2tydjVCUHBEeTBtWW1PS3BmSUd4QkF3cE92c1NBTERvYy93YVFlWkhrTi81bTAySjljcEdSbUdKSlpFejdrM2g1c3lmR1B5c2w5amRCMWlycXRPZHpwRGNHWXd2UFhFK0JWQ3JTVVJrOFFTU21mWSs4TWhuSTlIMm1Mam5zNUpSY0k2V3g0MmJORWliZnJBS0NXaCs2OHVwd3ltT0Rqd1A3WjVEcFYvWWJJYVlFQlNOYWpHeVYxK2F2UFUyZy92UlBQZDRDMzJOQzRjR3A5V0V6aDk1UXd4eUlpY2NQTkFDQTJ2SkRzTnZpOXcxQ3VEd3FldXVyZVNNWFEwOXVtM05IVHkvVlpOaHdSemVQYzBqeURUUnoyeFQ2UjhEaXJJN2E4cXJoQnNkRlJWVndxSnVBb1prZFdnTXlPWjhmVW9FaTg5U2p3STlyYzRudFYraHV1TW52bXh4ZjNBNHFHNis2WnNjRGNJaUdIQlNzbkFLS3QzSUZlUTc1bGFZNFJIUnVDOGY4YmRvcEhkRG9rMklMUkE4UTJpZUoyK1RnbE51VDl1OHR1ZUUweWNOM3JFVEFzam5hVmtlOE56a3QwZHJMcXQzU1RMdnEyVS81QWFtelA3QU9HdU9hcExlUDBqVThQeHRScUs3Q09TbEprQVpWbEZrai8wL0JYVzFPc29zdXo3aXZjSms0c3FyODhQQ2hxQTEwZms3Kzh2KzdRZnNNVXUxSWVxcFZlN1NpQzRoS0JRYzlDRE15ZTNHZmxDQWM3eloxMkwwcnUxU0E4ZFdrcjNpcVMyY0l6VzN5VlhwMW1sdWtHaGlWODBVd2ZkK1FzUHNpbzdRQ2FKZkx6T3dmbTBIZ2E0bVZMMGwxVFNNcERuZXM2cjIzazh5bDVmZU0ydlc5OExZVVBtbGVENks0OXY3V2JmK3VFcDBBSjNpOUZ0cHJTYi9WV3JwZlNkNkc5UmV0K3AwTTN3QVFNV1MwTGhjb3RFU0RxYWpscEhNMUhYYjg2amtyQVZ3S2R0S2d2eVg5R3FKRlhES0tTcUVOYUhWVTUvUWlpMkkvN2MvbVVhMGtydzlYbm0vRzgva25RaloveE05aG4ycEJBYTNUUGwyYTlidlE3ZlhQZk44YnZPNlpzTDNESE9CdThTK0xvaEJPV1RFeGcxcDVsRjFGNjRjaUdNL3dFU3JjbkNYY3lvSWtNcVVqdVZVR0xocmlIY0lXdEk1VUtORmk2eDB6ZHlIWS9VU29zL0VkZmU0YWJZZlNFaHFZNi9rbUZNLzE4eXZMME5ZYzk3Y3hiaWZQd01VZk04Qi9BWTdpNWFzWVFXOGhaVHBBbnVEc0hBQXZrRjFvZUxpdUl5eTRwRVU0UW1tSmI0WUZyZnNUZUtuSkNiLytYTVI3VUlsWVkvL3NreEw5Ni8ydjlMbWI0ZGNmWXJNOGR5cks4UHFXcXFaYmRGSzJuOG5RS2Jlc0p6U3hBS1ZPUjhIbWhrWUFWdk83M3FkdVgvRTdEL09OUC9DYUwvWFp4LzNaeitkeW41ZjFqKy8wdW1XMXl5OE5sVitjYTNvMXpaUjhZWTBvYU1BK1c1d1ZsZHVrRVV5Wk5FUkdSQi9QQzV2TGVES3I1YkdxZ1NZcUpncVZKTUtmMm5DVlhac2FRaGdIRmZ6ejdxc0pSOFR3UjFLRXA2N0oxYjdORVZhNStiWUsrcFhrQ0Z4OCtNbmZpcVp3dGE4TzY0c1liRXRQbU84cEo4am1QZkNuOXNoZWMyMDZHbEErbjR0SkZ0bEpyc0VXeFkwa2l3YkREaXRaTWI0TEJ4Vit5OHJ6enJ1cGNlcjErWjlXdC91YUYycGN0cTJSSS81TEdsR0g3SE9WMzIvYkpFKzZWOS85QVQwaWlscGhMc3JiQ05nMTBHQWJkK0JZTVJxYkdkamludGVzMUlHREw5V3RXNnBST3NXWWZmWWlWbkRMSlpZUmNLbDZaZ1IwYUkyT0JBZ3JySklpa285cUx2eEVVemcrTzduOEFWWC92cytRU3k4dW9XVFcxaFI0OWVQMnJDeXVncGI4OHIvbkR5WnVIaThiRWFta0JDbllDb0x0MHZ0WGw1YzZkTm14NmgwaytXclNRTnpFeWxxZ3dlQjhCZFZOZ0NZWXVPQkNlb21qNGozMmpvUE9IMWxKU1V4a1A1Mm1zSHVzamwrUnRRWlhhQ0dKNk1DQzR3STZMM3FNMjNIZDcxMTA2TWNaN1psazBXRm80aUxOVndBWldCVlFhc0pYb1lHUGdLQkE4MnZlUDcrN2dQYjNnYU0yQjMyR2NUMS9KaU9EdGNhMElTb21BblJ1dGdLd3E3SXRLb1FTemNaU0F1WCtyazJ2bFo0OG1pWG1PTHBzMGxIV21lUjB3WUtDNVZWOXNWcjVyMmtYTGgyRmlkRHdOUEl2U3d2YVFSRjkvUnM1UHFXcTY3cmxhV3pVUTFaVWdIZGptNGNJaTBVQThIdEdtUkcvRTd2bG5vYy9tSDd6RTlYa2VyVW1lYTBoUTVWWEVqQThjMVd0a1NpZE51WWJyaTBIZUJ0ZXNXZmNDVlZTT2ZXRDhFUi9TSUY2QkZmUU55VkwweFQ5SG80QVkvM092eTB5TGZtTFo3TUJLOXYvRXpGbTRFT1dITHlSdE1pUFkxVlNza2N3eHBUVTRaOHFvTWpYUlJCaVJmT3RLcDlPdVh4dUV5MnIrOS9wcytJYjVBQUNXTjBtaVJVcDQzbEx6MDYyektoMFZ3UW9uRUVpc2NGUVhabE5UaDY4by9uZjBCZWZSZ0tOZkdoT0RTSExMSlpESFJ1ZWNSVjJENFpYY0R6REFkaHd5QldpVHRXVE82WU1Nckl6Qis3SHhUN2wxdHRsVmNVTU9TL0dTZS9WVUpUdkEwNEMxTUs1Y1B2cXdXNWtaUk1TYWtXT3lJQW11Lzd2RjMzNDU4ODBTU210U2hvNmJQQTJPc05HVm4wd1plaXByK3IrMFl1Y2svWmorVjJEMmJERyt6UTl0LzNJT0d2aE42eEx4M29TL3owTE5EeVk3ZHk1RE5CVmZSR0xnQUN2dGdqcHFHeXdTaElMdmJZc3RIY0ZjTTN4T0Y5MW1JaDN1UERyMnhUbzZPZjRycTB2VjkzYkRwNjltNm5CVDN5Wi9tRVpGZ29heDFJTHB0VWduVGQxaVBxTm5mOW85YmVxZ2owYkhITDhqcVFtNGpCdzBpSTIxTjRiTVl2OWV0UCs5NjBSUVl2WkFTbEZHQlNYMDhNcVdaSUN0YXUxUkRWaGY4alFWQ1ZBWG1ET3huRGYzNzd3NUtlK0FsaktUTjFEVnU4SDR3MTlmM0R1NDdTZTlGckIwMHBTeHkwSlIyM3JqWEQrLzE2UEc2Mm9LRnRoTkgxMUJnY21IZzlpNXZxL2NtSTlWbFJ3VFkzMlJnV0hZNEVRakhISzVEcis2eEdXL0RMWWpmWGU2SGs3OGo0VTBNQmNaSVFlU1JzZmZEaThQdm1kcW95T2piOVZyQ1h6bzFCTjhLeHZmTHBQS2Nyb1g3dndocE8vaDNaZWZHallSbW01OW1UUHRHbXU0M255M3paelVNRUFUeXdBVHpzdGU0ejd3RWVQMTJVMWMyYmkyOU1LK1BEUUlMeGorVXlPZnMxOW5LSy9NVmV4NUp3NXNPZUdZSE41WVEwZ2ovZlFPTDFXaVFZTFBBZ1FLWW4rQ0t0Ti9JMFprQncrWTNNdHh3OWxDZzNsd3hTSVFPVU93d2pBTURrR0FNRDYwNXRNbEFCNGJHdW5XNmVsbmpMNHA2cmFSMXVtZ1pHa1lTQklOSjc0ZVBkOTczMG5TejM0eHBXMmxlRW9sdnA4R21YZUVsUkd0WUJWMzU2VFJLNm5kenVWdmlGWWMrRDNSZitlMmxLVlJWOS9xdHYvVlY0Yll1QXpaeEJRUWJDWTBJZTJpUElSbXdOenFZbm8wMk56aUFRNUxMRWQ2WUNJRzZnc09SU0hBRjQ0TkNPRlZBdE9wRzdyMy9YSVprY2hrTlUwS0ZrUU9YditHQUE4elVKSFFVS1BiWVJ1KzZBcUttNTlpbXFKcUZtekh0TE10SE90amV3dzBxUUFBYlFGaHFIRmxuVVdDeklyZEdhZzkrTmNMNTAvcHRkRTBwQTNkNEVlRUVveDNNVHhtbWg4WVBUa1NDNFV3TWVxc3B3N2RnZ1VROHQ1dTUzQXNnUmNITURJSVFKajFjZUlJN1h0ZHlQTGhnWHc2SERFQWwrS1NKZzNhQXcwYXdxUk13blBpS3hnT1RadWk4a1daTUk0Y0xjT0RhY2JLS2NPdkx1c2FwNnkzVHpIY1VuTzFvM2JkMkoxRllTSEJ4UnVTMnVKSGtvMnRnTzNRcll5UGFyWldMenc4Z2N5N2VSK0FidTRBWGQwNXJIWnlMSWhZWS9kMEJQZmlreGFDRkxUbUhGUXdQR052ZmNXTjVPZ251WXFqNDlaQlB5OTNVakdtZEhsWlptSElZQ0EwSHdnd3NON3FXRWRpekRqOUFGaFlRWEZ0ZkpNSjVOaFdkZE5FWm5Ub2hmdUpiK05vRXFqdndSVXpkaGROSUQ3Zzk3cWJPL0IxNCsxOGR2TmVRb0tVd2YyQmtSRXhnSUZMNlRudFhyU282eEZGRW9BejBVVmpLS1hCWURiNEFsbEpRRW95K3FYMS92ajNHMzZITm1OYTI2NGxjbGRkQnFzRDVGRFNoSXZDa3R2K2tXTWhhY1Nja2ZNNnB2eUZRUWxRblBFaURoMmorSTJiT2pVb2Q0V0VZbHlFY05XMXg1OEtzZ2VFSTlFRXZ0ZGJwTzQ5Q0R2UFhTS2dxUmpRb1I1SVRIc25vRFJlREo3KzF1N1U0YnBldjJXQ1RmQ0ord2kyTDRKRVowc0Nqd0hwNERwUjlZTWJOQllzTy9lQ0xieDFndUFoTEVOYldKR2dvVW05Q1V1NlpSdW1MMHlWRzQvSWVFT0F1QStzWUJyZksrUTZZZWtIUzZYNGpnQnhDcjBWaXRSbFJsdExiM2tiTVd6bVBLL2x4UlN4ZVBlNkd2RmxQaHcxNzRsenhiOXZ5NWJ5c09DcENnMGdnMEhGaTc5OGNncHdUOWZCcmI1MDllNWFKcXprZG9Wdzd1aU14aE5zS3lKZm9ncU90cm9JY3hNRjFEWGR0SlppSUU3RkdkTWxic1NLclZzd21YaFR3dktOa1VGTCtnT1BDNHMvWjg2NzF3SE9iaFNkSjlzTWJIbTZ3VlAxVFFjcUtnSmcrVk8zVkF3NDJLQ3FOVU0zUFNhZXVEbjVoK0ZNREFmMmhscXBveGpUT0dOQjUrUEtxL0p4UGFCZk1JVDhEY2xycmtIcGc0NXZsNWRtendqVWF1eTMzYXBLY1U0SEU3dTNCcW9PV2FEdmQ5N2I3Nk05YlZRcFdGWkRjOWwzdnpaYk5OWkVhazRtdVBiVkxva3B6N3RXQXlncm54NTROaXhPTVJsNkh1K1J1VTF5Yi9zaDc3aXNYbmhDcVN5ZzZ3aGNoTXh3eEhmaGhQaFVhUE45UmRBMmVQSUl0UHZNZ0NEeDRBZ2xyZmVuSjlmY2w5SHo0a0xlTzIvbTNNRzBZT2UvVDZ0enpIWnhuRHN6V0dHV2tneWVGK09tVWRQRk1oQUJMQkEwWGJIUVJXdVFxS0lvM245azAxTDlYeHJiNkE5OFZTaGRPdGRYR0doSFl2eU9rSFIvT3NzS2RFeTBjdjFCWUlzSVNTRmJaWVBXQkV3dlcyS2lTZWM2MlFTS3JNand1d3kvUjhGQzR5Wms2OU01MzlzbklNRzlkc2RWUVlrR2NINGQ0b3dIUlRndVN6YlZ3WkV6Q3hnUFdlSGg2TDhNREdzTHNlaFJRTkY3RXZ3bWRKM3JiOFIvN3pKbzVUSzloN3lPL1lDUUFNWUlObmhiQ2dSa0RpZ0FGYTdmQXdUSVdrN1JkTkx1UGU3Q2tEeDdFSjhSbk9XMGdQV0Z6SWxsRlJOamdBNlZFNURUSXFkQXVJYnBOR2RGendISXRFZlM0bHhBSkJCODBJM1EzM09hQmhwVlY2cGI5TnM0Yk5tcjJOdjk3aG85Vmt6cmlSMHFJdFBKSXJIS0Q2b29uTzhnVHdFRXdlbGxKVEN3dzloNDkzb3YvVHY0ZDk5TzRnUFhBVjNHV3JFTVAwSFhGS3R0dlNoSi9abWVGS0VsT2JjS2dNMkVQUFgza1pxU1pyNDBjQmMzZUphclRvR1I3d2RrcnRrdW5TclQ5SGcwQTdmQjBaTWFyaDIvT1g3bGp4UWl4cGp5WjFwRU5ndDJzMTNZWnN6MDRmWGoremZtODhidzljS1c1M3B4QlorN3oxL1VhSGk1YmF4anJzWDA1Mm01RGpiNmRSdXczcFE4NzU4M2JrdDhpMHkwVi9KK2NkdHZoL1QrWm9kYlEvbjlNdDZhVi9qZmsrYitlL3QvUWk2M2h3YU9jcEtlblB3U1pCYmkzQlc4cTRYR09MQnNwK0tjakNqaDhEUkdVRTdEb3FxdlBuei9mcUZpMEJ2bS9rNmRyMTY0Nm9LTTk0S2lCZW92dWhLdHo1ODd0Z1ZiTnVYUG5MZ0NOc0hEZjNkRnBhV24zUTZFdE9Dc3c3Q2tCY1k5UDN0ajhBdU5JRk1WOUFQeVBNOTJsUzVmSlVOL2o4S1VCSFVaZzVIT285MGtQUVUxK0lOOWdvRzh0ME93eDYwTEhZZlB5ckNaWjdoaWtvZUM4RzZsVjBMR3JJWjRLY2J4cGFIUlE4YnFMRnk5ZWJnVDhod0tkT25WS1loaG1OYUJ2VkkrQmVmdnRxZ002UndIY3d6RDRWVUJqaTN2b3BqamdMaW1SZ0FGUWFBUU1rYk13ckxBQnZ5blRWa21TbXVteVVJYUdsaDZPZXdNYXlnTCtMN0FEdTlZVWNYSnljb0Jlcng4RHNJb3paODc4Q01Nd0VYcHVGTlJUS1FqQzk1Y3ZYeGFnTG55bGFnVEFDcUQ4Um1qWWJJQmxBR3liRnhla2ViUXM2TW5uQUZiTzgvd21YQlp3emdNYTlnRHp2UUVPdDFpSVBHOFo3RU1EUmtJRGpnVDYvQ0dhNzNRNmQyVmxaWG5VWEFLUVpVQkNLREM4TWpVMU5SWXlYZ01FWUk3NDNVR2w4NEdnRmQ0NDVNZU1mQWw1L0x5d0cvNXpRTWh5cUt3dDRQZ015dlhIZU1EZkQra0hJUHltTnovQXNJWFZCakRNaU1jQmJEWFU4emd3RWc2TTRBWTAza2o2RGZ3WStFSnhIT09EZkVNZ0h6eWRJaWNCcUFOODhEK2oxSzBBOTFnRGdVYjhmNCtld1BtOUR0S3JvZlA2NFlZbGdkQk5tR0djeUxMczI1aFFiMGJ3TTVzeURMMFFCK2xiNGNNTUo0T2dHZTNOQzBqZkJEZ1dCcmo4MENaNEJrRjRJYVEzN3FFZy9pUjg4eUZmVThIeklNRGdDaXJjbUFOVElIeGUxd01DSG9ZeEFQSU1CcVp3K2U0UUhRcGZHSWFEay9BUDBQZ2FwRDBCZUE0RGIxak4zb3ZoQUF1RytmOEtEamV1MDREb1BvampvZFhvWUFRc2JZejhIckFDa29YQWJGOUFtQVhEMWVWTkI2UXM0RWpBTFFsNWZ2TEN3UytIaHNPOTlva1hCdW5sVUI0ejFqaUNvTHdHUnByR2hXKzRObmN2UTMySnpVRm9HT0NjQTNpYURtbnYxbndmd0pjQ1Bqem5NYk9OQndNUWpjQ3dScVloL0FZR05IRzdZUVI0cERxMDNyM0EwREFndEJhaytIZkE3Q1NJVjBQZVpyWXFxQXcyeng3WFZQamtBUnozUXZtTk5FeElLUTREdk13TGc3QnNzOW1BUHhuamFCd1YwUEJWc0dUbEF1eVlOeS80Y01iamNZMDRiOFFSMEhnVThPUGxheWZReUlNL3hac0djRThuZVpnR3BwNEZRTG8zRVRMYWdUblBNZ0d0ajRmeWRraGZBVWdtd2hUSWgvaFQ4QjJGYnk1OHR6akkrL3VhOTN1S3B5RUE1dTBKRFBVMlRpTnprQzZENElQbkdIaUVOek9BdytiZDQycHYrTGpSdkEyQVI0dkhBY3l6bkFLTkd3Q3dEZUwzZ0w4QXZvMmVEUEFEZUQyckFna0NBUXVKUmQ2RUc3NE5LdThMQ0NhQlVNSkxnUVlLOE9BLzJpVGZYb0NkYnhMSHdlZnhEOEM5UWdoSFBiMENzR0Fjd1E3Q0liK0gvdnNjQVdBY1NHWkNxOVVHQU1HTnJ4SWc3TUVGNlo0aERqNXV2Qzl3ZVVoTHVJRUg0L1J0MTY2ZEQ4QTh3eHJnSW95U0h5SHU5dWFCOEREUVMwWmg2ZjBWQUJ1SGdEZkR6VDRnZUJWZ2wwQmlicjg1clVsOE4rVDdIdkpnbkY1WEJ3UXRoZ3FYQWlEQUN3Ui9NY0N4OE9ycWhVRjhISlRQZ1FiL0JjSjJTTU1kZ251NEVqNHNwZUhBWHg0TnczMDdqRTRzTis3Rk1LL0Q1U0U4RXNwTjlNTEFGd0VPNXhaZzl2bmRMY2JkZlFBK1BEUXdjZDVoaDFzUmp6UDhHaVlTL0NBUU1KOWN1M2F0RGhwcER1U2RBSjhiNEcvQkp3T1R5eUJmTnNCbUFOR0pFTVlTVXd1K0FPbDd3RDhCOFI4aEhBRmhyTkxpT1hvUWZNeVlHY0k2Q0pmRGx3ME1YWVI0WUZSVWxEWWtKR1Fhd0taQ25oRHc4VEw0SWFSZmhYVGNzMXZCdzczT1FqcVcwc1h3SFlUMWVBOU1FeEhnV0lVOUI4dlVPekJhSjBQYVE1RHRNNWp6bi93WDJ6K2p3Wm1lRTlFQUFBQUFTVVZPUks1Q1lJST0iIC8+PC9zdmc+);
+*/
+	background: -moz-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* FF3.6+ */
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(4%, rgba(238, 238, 238, 1)), color-stop(100%, rgba(219, 219, 219, 1))); /* Chrome,Safari4+ */
+	background: -webkit-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* Chrome10+,Safari5.1+ */
+	background: -o-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* Opera 11.10+ */
+	background: -ms-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* IE10+ */
+	background: linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* W3C */
+ filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#eeeeee', endColorstr='#dbdbdb', GradientType=0 ); /* IE6-8 */
+}
+#header {
+	padding:5px 0 0 15px;
+}
+#logo {
+	float:left;
+}
+.clear_both {
+	clear:both;
+}
+#welcome {
+	line-height:50px;
+	vertical-align:middle;
+	margin-left: 80px;
+}
+#tabs-1 {
+	overflow: auto;
+	width: 100%
+}
+#sub-tabs1 {
+	width:45%;
+	float:left;
+}
+#ADCategoryTableContainer {
+}
+#ADEntryTableContainer {
+}
+#AD_Info {
+	width:45%;
+	float:left;
+	margin-right:20px;
+	border:solid 1px #999;
+	padding:20px;
+	-webkit-border-radius: 20px;
+}
+#barChartContainer {		
+}
+.iwContent {
+	font-family:"Trebuchet MS", Arial, Helvetica, sans-serif;
+	font-size:14px;
+}
+#AD_profile {
+	padding:20px;
+}
+#SMSTableContainer {
+	padding:20px;
+}
+#CustomerContainer {
+	padding:20px;
+}
+#CategoryContainer {
+	padding:20px;
+}
+#simplemodal-overlay {
+  background-color:#000;
+}
+#simplemodal-container {
+  background-color:#333;
+  border:8px solid #444;
+  padding:12px;
+}
+
+#simplemodal-container a.modalCloseImg {
+	background:url(imgs/x.png) no-repeat; /* adjust url as required */
+	width:25px;
+	height:29px;
+	display:inline;
+	z-index:3200;
+	position:absolute;
+	top:-15px;
+	right:-18px;
+	cursor:pointer;
+}
+
+
+</style>
+</head>
+
+<body>
+<div id="header">
+          <div id="logo"><img src="imgs/logo.jpg"/></div>
+          <h1 id="welcome">Welcome to Krishi Utso</h1>
+</div>
+<div id="content_wrapper" class="clear_both">
+          <div id="tabs">
+                    <ul>
+                              <li><a href="#tabs-1">Shop Profiles</a></li>
+                              <li><a href="#tabs-2">Summary</a></li>
+                              <li><a href="#tabs-3">Raw Data</a></li>
+                              <li><a href="#tabs-4">Send Text Message</a></li>
+                    </ul>
+                    <div id="tabs-1">
+                              <div class="ui-widget">
+                                  <label for="profile-search">Search: </label>
+                                  <input id="profile-search" />
+                                  <button type="button" id="profile-search-btn">Go</button> 
+                              </div>
+
+
+                              <div id="AD_Info">
+                               		<div id="ADEntryTableContainer"></div>
+                                        <div id="AD_profile"></div>
+                                        <div id="SMSTableContainer"></div>
+																				<div id="CustomerContainer"></div>
+																				<div id="CategoryContainer"></div>
+                                       
+                              </div>
+                              <div id="sub-tabs1">
+                                        <ul>
+                                                  <li><a href="#sub-tabs1-1">Map</a></li>
+                                                  <li><a href="#sub-tabs1-2">Clients</a></li>
+                                                  <li><a href="#sub-tabs1-3">Sales</a></li>
+                                                  <li><a href="#sub-tabs1-4">Categorization</a></li>
+                                        </ul>
+                                        <div id="sub-tabs1-1">
+                                                  <div id='map' style="margin-top: 10px; height: 500px;"> </div>
+                                        </div>
+                                        <div id="sub-tabs1-2">
+																						<div id="ADClientsTableContainer">
+																							<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11%2C+col12%2C+col13+from+1i2B3pHtuOS51FIHeDx9lsBqZ1TBhRoUDAw_f2nY+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Customers%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;width=500&amp;height=300"></iframe>
+																						</div>
+																						<div id="ADClientsPieChartContainer">
+																						</div>
+																				</div>
+                                        <div id="sub-tabs1-3">
+                                                  <div id="barChartContainer">
+                                                  	<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Sales+in+BDT%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=500&amp;height=300"></iframe>
+
+																										<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col12+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Treatments%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22scaleFactor%22%3Anull%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=500&amp;height=300"></iframe>
+                                                  </div>
+                                        </div>
+                                        <div id="sub-tabs1-4">
+                                                  <div id="heatmapContainer">
+                                                  	<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;width=500&amp;height=300"></iframe>
+                                                  </div>
+                                        </div>
+                              </div>
+                    </div>
+                    <div id="tabs-2"> <div id="ClientChartContainer">
+																						<iframe width="1000" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;gco_title=Ratings+Summary&amp;width=1000&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Sales+in+BDT%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=Sales+Summary&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=550&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11%2C+col12%2C+col13+from+1i2B3pHtuOS51FIHeDx9lsBqZ1TBhRoUDAw_f2nY+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Customers%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=Customers+Summary&amp;width=550&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col12+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Treatments%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22scaleFactor%22%3Anull%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=AI+Treatment+Summary&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=550&amp;height=400"></iframe>
+                    									</div>
+																			<div id="SalesSummaryLineChartContainer"></div>
+										</div>
+                    <div id="tabs-3">
+                              <div id="sub-tabs3">
+                                        <ul>
+                                                  <li><a href="#sub-tabs3-1">CategoryTable</a></li>
+                                                  <li><a href="#sub-tabs3-2">AD Entry Table</a></li>
+                                                  <li><a href="#sub-tabs3-3">SMS</a></li>
+                                                  <li><a href="#sub-tabs3-4">ClientTable</a></li>
+                                        </ul>
+                                        <div id="sub-tabs3-1">
+                                                  <div id="ADCategoryTableContainer"></div>
+                                        </div>
+                                        <div id="sub-tabs3-2">
+                                                  <div id="ADEntryTableContainerRaw"></div>
+                                        </div>
+                                        <div id="sub-tabs3-3">
+                                                  <div id="SMSTableRawContainer"></div>
+                                        </div>
+                                        <div id="sub-tabs3-4">
+                                                  <div id="ClientTableContainer"></div>
+                                        </div>
+                              </div>
+                    </div>
+                    <div id="tabs-4">
+                              <div id="SendSMSTableContainer" style= "float: left;"></div>
+                              <div id="sms_form">
+                                        <h3> Send a message </h3>
+                              </div>
+                              <div class="clear_both"></div>
+                    </div>
+          </div>
+          <div id='pic-modal'></div>
+</div>
+</body>
+</html>
