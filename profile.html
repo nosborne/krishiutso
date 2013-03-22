@@ -138,6 +138,8 @@ var catCircle;
 var marker, map, i;
 var infowindow;
 var mapIcon;
+var circle;
+var circleColor, circleRadius;
 
 	function initializeMap() {
 		//query the agrodealer entry form for needed data
@@ -194,23 +196,40 @@ var mapIcon;
 			if (shopRating>=70){
 				//alert(shopRating);
 				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
+				circleColor = 'Green';
 			}
 			else if (shopRating>=50 && shopRating<70){
 				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+				circleColor = 'Blue';
 			}
 			else if (shopRating>=25 && shopRating<50){
 				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png';
+				circleColor = 'Yellow';
 			}
 			else {
 				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
+				circleColor = 'Red';
 			}
+			var latLng = new google.maps.LatLng(myLat[i], myLng[i]);
 			marker = new google.maps.Marker({
-				position: new google.maps.LatLng(myLat[i], myLng[i]),
+//				position: new google.maps.LatLng(myLat[i], myLng[i]),
+				position: latLng,
 				clickable: true,
 				map: map,
 				icon: mapIcon
 			});// draw markers
-
+			
+			//Add circle
+			circle = new google.maps.Circle({
+				center: latLng,
+				map: map,
+				radius: (150*shopRating),
+				fillColor: circleColor,
+				strokeColor: "Gray",
+				strokeOpacity: 0.5,
+				clickable: false
+			})
+			
 			//marker.setIcon = (mapIcon);
 
 			//info window content
@@ -220,8 +239,8 @@ var mapIcon;
 						"</br> <b>Owner: </b>" + ownerNames[i]+ 
 						//"</br> <b>Owner Picture: </b> </br><img src='" + ownerPics[i] + "' width='75' height='75'/>"+
 						//"</br><b>Shop Picture: </b></br>  <img src='" + shopPics[i] + "' width='75' height='75'/>"+
-						"</br> <b>Owner Picture: </b> </br><img onclick='enlargePicture(this)' src='" + ownerPics[i] + "&previewImage=true' />"+
-						"</br><b>Shop Picture: </b></br>  <img onclick='enlargePicture(this)' src='" + shopPics[i] + "&previewImage=true' />"+
+						//"</br> <b>Owner Picture: </b> </br><img onclick='enlargePicture(this)' src='" + ownerPics[i] + "&previewImage=true' />"+
+						//"</br><b>Shop Picture: </b></br>  <img onclick='enlargePicture(this)' src='" + shopPics[i] + "&previewImage=true' />"+
 						"<br><b>Rating: </b>" + ratings[i] +
 						"</div>"
 				});
