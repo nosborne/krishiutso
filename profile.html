@@ -137,7 +137,7 @@ var ratings = new Array();
 var catCircle;
 var marker, map, i;
 var infowindow;
-//var mapIcon;
+var mapIcon;
 
 	function initializeMap() {
 		//query the agrodealer entry form for needed data
@@ -184,17 +184,34 @@ var infowindow;
 			myLng[i] = Number(lng); 
 			
 			//get ratings
-		//	ratings[i] = response.getDataTable().getValue(i,6);
+			ratings[i] = response.getDataTable().getValue(i,6);
 		}
 		
 		//mark the map
 		for(i=0; i<myLat.length; i++)
 		{
+			var shopRating = ratings[i];
+			if (shopRating>=70){
+				//alert(shopRating);
+				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
+			}
+			else if (shopRating>=50 && shopRating<70){
+				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png';
+			}
+			else if (shopRating>=25 && shopRating<50){
+				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png';
+			}
+			else {
+				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
+			}
 			marker = new google.maps.Marker({
 				position: new google.maps.LatLng(myLat[i], myLng[i]),
 				clickable: true,
-				map: map
+				map: map,
+				icon: mapIcon
 			});// draw markers
+
+			//marker.setIcon = (mapIcon);
 
 			//info window content
 			marker.info = new google.maps.InfoWindow({
