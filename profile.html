@@ -1,0 +1,941 @@
+<html>
+<head>
+<script type="text/javascript" src="http://www.google.com/jsapi"></script>
+<script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script>
+<script type="text/javascript">
+      google.load("visualization", "1", {});
+      google.load("prototype", "1.6");
+    </script>
+	
+<script type="text/javascript" src="DataHandlers.js"></script>
+<script type="text/javascript" src="InteractionHandlers.js"></script>
+<script type="text/javascript" src="DrawHandlers.js"></script>
+<script type="text/javascript" src="http://systemsbiology-visualizations.googlecode.com/svn/trunk/src/main/js/load.js"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.2/jquery.min.js"></script>
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.16/jquery-ui.min.js"></script>
+<script type="text/javascript" src="http://simplemodal.googlecode.com/files/jquery.simplemodal.1.4.3.min.js"></script>
+<script type="text/javascript" src="js/jquery.simplemodal.1.4.3.min.js"></script>
+
+<link type="text/css" href="css/smoothness/jquery-ui-1.8.16.custom.css" rel="stylesheet" />
+
+<script type="text/javascript">
+	 $.noConflict();
+
+	 //fusion table IDs
+	 var SalesTable = 5461848; //SMS sales data
+	 var ClientsTable = 4979471; //SMS clients data
+	 var NewADTable = 5461272; //Shop owner entry form
+	 var ADCatTable = 5461074; //Shop owner categorization table
+	var salesTableID = "1BcDKwbf7azUIzxlCyeAQMcYYfcbJhEmRjxQRqT4"; //appspot fusion table
+	var mapTableID = "1Wi_qTfg_HcHJvCF57zszQZzvdajLY_IPCGwtNio"; //appspot merged fustion table
+	
+	function drawCharts() {
+		/*Category Chart*/
+	/*
+		var categoryQueryText = "SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos','BizLink','RecordAccting','BizRegLic', 'ShopID' FROM "+ADCatTable+"";
+		categoryQueryText = encodeURIComponent(categoryQueryText);
+		var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq=' + categoryQueryText);
+		query.send(categoryCallBack);
+	*/
+		/*Sales */
+		var salesQueryText = "SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+" WHERE Shop_ID_Number="+selectedID+"";
+		//var salesQueryText = "SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+"";
+		salesQueryText = encodeURIComponent(salesQueryText);
+		var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq=' + salesQueryText);
+		query.send(salesCallBack);
+	}
+
+	 // query the categorization table
+	 var queryCategory = encodeURIComponent("SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos','BizLink','RecordAccting','BizRegLic', 'ShopID' FROM "+ADCatTable+"");
+	 var CategoryData = new google.visualization.DataTable(); //create category data table
+	 
+	 //query the clients table
+	 var queryClient = encodeURIComponent("SELECT 'New_Male_Customer','New_Female_Customer','Old_Male_Customer','Old_Female_Customer' FROM "+ClientsTable+"");
+	 var ADClientData = new google.visualization.DataTable();
+	 
+	 //query the dealer entry table
+	 var queryEntry = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic','PhoneNum', 'ShopID' FROM "+NewADTable+"");
+	 var EntryData = new google.visualization.DataTable();
+	 
+	 //query the SMS table
+	 var selectedID = 1021;
+	 //query by dealer ID
+	 var querySMS = encodeURIComponent("SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+" WHERE Shop_ID_Number="+selectedID+"");
+	 //query whole table
+	 var querySMSRaw = encodeURIComponent("SELECT 'Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Shop_ID_Number' FROM "+SalesTable+"");
+	 var SMSData = new google.visualization.DataTable(); //raw data table
+	 var ClientData = new google.visualization.DataTable();//client data table
+
+	 var detailedContent; //detailed profile
+	 
+	 var selected = false;
+
+   // autocomplete search options for AD Profiles table
+   var profileSearchOptions = [];
+	 
+   var activeMarker; // helps track an open marker so it can be closed when another is opened
+
+
+   // helper fn because of a scoping problem. used in the listener closure for the map markers
+  function getInfowindow() {
+    return infowindow;
+  }
+
+
+
+	 //blanket function to query fusiontables
+	function loadTable(query, callbackFunction){
+		 var queryText = query;
+		 var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq=' + queryText);
+		 query.send(callbackFunction);
+	 }
+	 
+	 /*
+	 jhe window loads:
+		* all the data from the fusion table
+		* interface components
+		* Map
+	 */
+	 jQuery(document).ready(function($) {
+			$('#tabs').tabs();
+			$('#sub-tabs1').tabs();
+			$('#sub-tabs3').tabs();
+			loadTable(queryCategory, generateCategoryDataTable);
+			loadTable(queryEntry, generateEntryDataTable);
+			loadTable(querySMSRaw, generateSMSDataRawTable);
+			loadTable(queryClient, generateClientTable);
+			initializeMap();
+			initCharts();
+			drawCharts();
+
+	  });
+	  //update dealer profiles in a <div> with the id AD_Profile
+	 
+ 
+	 function updateProfile(Content){
+		$('#AD_Profile').append(Content);
+	  }
+	  
+//load visualization packages
+   	google.load('visualization', '1', {packages:['table']});
+	google.load("visualization", "1", {packages:["corechart"]});
+    systemsbiology.load("visualization", "1.0", {packages:["bioheatmap"]});
+	 
+/*************************
+**************************
+BEGIN MAP FUNCTIONS
+**************************
+**************************/
+//initialize variables
+var myLat = new Array();
+var myLng = new Array();
+var dealerNames = new Array();
+var ownerNames = new Array();
+var ownerPics = new Array();
+var shopPics = new Array();
+var ratings = new Array();
+var catCircle;
+var marker, map, i;
+var infowindow;
+//var mapIcon;
+
+	function initializeMap() {
+		//query the agrodealer entry form for needed data
+		//var queryText = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic' FROM "+NewADTable+"");
+		var queryText = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic','ShopID','Rating' FROM "+mapTableID+"");
+		var query = new google.visualization.Query('http://www.google.com/fusiontables/gvizdata?tq='  + queryText);	  
+		query.send(getMapData);
+	}  
+	  
+	function getMapData(response){ 
+		//generate map. Centered in Atlanta for now
+		var mapCenter = new google.maps.LatLng(25.44,89.30);	
+		var mapOptions = {
+			center: mapCenter,
+			zoom: 9,
+			mapTypeId: google.maps.MapTypeId.ROADMAP
+		}
+		//draw map
+		map = new google.maps.Map(document.getElementById('map'), mapOptions);
+		var infowindow = new google.maps.InfoWindow(); //initialize info window
+		
+		//get coordinates
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();
+		
+		for(i=0; i<numRows; i++){
+			
+			//get agro-dealership names and shop pics
+			dealerNames[i] = response.getDataTable().getValue(i,0);	
+//			shopPics[i] = response.getDataTable().getValue(i,4);	
+			shopPics[i] = response.getDataTable().getValue(i,4) + "&previewImage=true";	
+					
+			//get owners names
+			ownerNames[i] = response.getDataTable().getValue(i,1);
+			ownerPics[i] = response.getDataTable().getValue(i,3);
+			
+			//get coordinates
+			var points = response.getDataTable().getValue(i,2);
+//			var lng = points.substring(20,33); //split longitude
+//			var lat = points.substring(34,47); //split latitude	
+			var lng = points.substring(20,29); //split longitude
+			var lat = points.substring(30,39); //split latitude	
+			myLat[i] = Number(lat); //store coordinates
+			myLng[i] = Number(lng); 
+			
+			//get ratings
+		//	ratings[i] = response.getDataTable().getValue(i,6);
+		}
+		
+		//mark the map
+		for(i=0; i<myLat.length; i++)
+		{
+			marker = new google.maps.Marker({
+				position: new google.maps.LatLng(myLat[i], myLng[i]),
+				clickable: true,
+				map: map
+			});// draw markers
+
+			//info window content
+			marker.info = new google.maps.InfoWindow({
+				content: "<div class='iwContent'>"+ 
+						"<b>Shop Name: </b>" + dealerNames[i]+ 
+						"</br> <b>Owner: </b>" + ownerNames[i]+ 
+						//"</br> <b>Owner Picture: </b> </br><img src='" + ownerPics[i] + "' width='75' height='75'/>"+
+						//"</br><b>Shop Picture: </b></br>  <img src='" + shopPics[i] + "' width='75' height='75'/>"+
+						"</br> <b>Owner Picture: </b> </br><img onclick='enlargePicture(this)' src='" + ownerPics[i] + "&previewImage=true' />"+
+						"</br><b>Shop Picture: </b></br>  <img onclick='enlargePicture(this)' src='" + shopPics[i] + "&previewImage=true' />"+
+						"<br><b>Rating: </b>" + ratings[i] +
+						"</div>"
+				});
+			
+			//add marker listener
+			google.maps.event.addListener(marker, 'click', (function(marker, i) {
+			return function() {
+
+        if (activeMarker)
+          activeMarker.info.close();
+
+        innerInfowindow = getInfowindow(); // FIXME probably a better way to do this....
+        activeMarker = marker;
+        if(innerInfowindow) {
+          innerInfowindow.close();
+        }
+
+			  marker.info.open(map, this);		  
+				/* draw circle upon click; this is not entirely functional. The point was to draw circles
+				of varying radii based on agrodealer's sales */
+				var categoryOptions = {
+					strokeColor: "#FF0000",
+					strokeWeight: 2,
+					map: map,
+					center: this.position,
+					radius: 10000
+				};
+			//  catCircle = new google.maps.Circle(categoryOptions);
+			}
+		  })(marker, i));
+		}// end iteration
+	}//end map functions
+
+/*************************
+**************************
+GENERATE CATEGORY DATA TABLE
+This table is populated with raw categorization data
+**************************
+**************************/
+
+	function generateCategoryDataTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		
+		CategoryData.addColumn('string', response.getDataTable().getColumnLabel(0));
+			for(var i = 1; i<numCols-1; i++){
+//				CategoryData.addColumn('string', response.getDataTable().getColumnLabel(i));
+					CategoryData.addColumn('number', response.getDataTable().getColumnLabel(i));
+			}
+		
+		CategoryData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols-1 ; n++){
+				CategoryData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+
+		table = new google.visualization.Table(document.getElementById('ADCategoryTableContainer'));
+		table.draw(CategoryData, {page:"enable", pageSize:5 });
+
+	}// end category data table
+	
+/*************************
+**************************
+GENERATE CLIENTS TABLE
+This table is populated with clients raw data
+**************************
+**************************/
+
+	function generateClientTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		ClientData.addColumn('number', response.getDataTable().getColumnLabel(0));
+		
+		for(var i = 1; i<numCols; i++){
+			ClientData.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		ClientData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols ; n++){
+				ClientData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+
+		table = new google.visualization.Table(document.getElementById('ClientTableContainer'));
+		table.draw(ClientData, {page:"enable", pageSize:5 });
+
+		var NewMaleSum= 0;
+		var NewFemaleSum= 0;
+		var RepeatMaleSum= 0;
+		var RepeatFemaleSum= 0;
+		//add up clients by types: male, female, repeat male, repeat female
+		for(i=0; i<ClientData.getNumberOfRows(); i++){
+			NewMaleSum+=ClientData.getValue(i,0);
+			NewFemaleSum+=ClientData.getValue(i,1);
+			RepeatMaleSum+=ClientData.getValue(i,2);
+			RepeatFemaleSum+=ClientData.getValue(i,3);
+		}
+
+		//make a summary pie chart of client types for each agrodealer
+		var data = new google.visualization.DataTable();
+		data.addColumn('string', 'Label');
+		data.addColumn('number', 'Rows');
+		data.addRows([
+		['New Males', NewMaleSum],
+		['New Females', NewFemaleSum],
+		['Repeat Males', RepeatMaleSum], 
+		['Repeat Females', RepeatFemaleSum]
+		]);
+
+		// Set chart options
+		var options = {'title':'Krishi Utso Customers',
+					 'width':500,
+					 'height':400};
+/* Replaced with fusioncharts
+	// Instantiate and draw our chart, passing in some options.
+		var chart = new google.visualization.PieChart(document.getElementById('ClientChartContainer'));
+		chart.draw(data, options);
+*/
+	}//end clients table
+      
+/*************************
+**************************
+GENERATE ENTRY DATA TABLE
+This table is populated with entry data for various functions that use entry information
+**************************
+**************************/
+	function generateEntryDataTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		numColsDisplay = 2;	//display 2 columns: dealership name and owner name
+		var EntryDataTableDisplay = new google.visualization.DataTable(); //create table to display
+		
+		EntryData.addColumn('string', response.getDataTable().getColumnLabel(0)); //dealership name column
+		
+		for(var i = 1; i<numCols-1; i++){
+			EntryData.addColumn('string', response.getDataTable().getColumnLabel(i)); // other columns in the table
+		}
+
+		EntryData.addColumn('number', response.getDataTable().getColumnLabel(numCols-1)); // dealer ID column
+		EntryData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols ; n++){
+				EntryData.setCell(j, n, response.getDataTable().getValue(j,n)); //get table rows
+			}
+		}
+
+		//create the entry display on the first page
+    //and build the autocomplete search box
+		EntryDataTableDisplay.addColumn('string', response.getDataTable().getColumnLabel(0));
+		for(var i = 1; i<numColsDisplay; i++){
+			EntryDataTableDisplay.addColumn('string', response.getDataTable().getColumnLabel(i));
+		}
+		EntryDataTableDisplay.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numColsDisplay ; n++){
+				EntryDataTableDisplay.setCell(j, n, response.getDataTable().getValue(j,n));
+        profileSearchOptions.push(response.getDataTable().getValue(j,n));
+			}
+		}
+    jQuery("#profile-search").autocomplete({
+      source: profileSearchOptions
+    });
+
+
+
+    // the next two blocks set up the search box actions
+    // for when the enter key is pressed or the Go button is pressed
+    // future fix: factor this out into a separate function so there isn't repeat code
+    var frontPageNumRows = numRows;
+    var frontPageNumCols = numColsDisplay;
+    jQuery("#profile-search").keyup(function (e) {
+      if (e.keyCode == 13) { // enter key is pressed
+        for (var r=0; r < frontPageNumRows; ++r) {
+          for (var c=0; c < frontPageNumCols; ++c) {
+            if (jQuery('#profile-search').val() == EntryDataTableDisplay.getValue(r, c)) {
+              EntryTable.setSelection([{'row':r}]);
+              frontPageTableOnClick();
+            }
+          }
+        }
+      }
+    });
+    jQuery("#profile-search-btn").click(function(){
+      for (var r=0; r < frontPageNumRows; ++r) {
+        for (var c=0; c < frontPageNumCols; ++c) {
+          if (jQuery('#profile-search').val() == EntryDataTableDisplay.getValue(r, c)) {
+            EntryTable.setSelection([{'row':r}]);
+            frontPageTableOnClick();
+          }
+        }
+      }
+    });
+
+
+		EntryTable = new google.visualization.Table(document.getElementById('ADEntryTableContainer')); //draw front page table
+		EntryTable.draw(EntryDataTableDisplay, {height:'240px'}); // roughly 10 rows; scrollbar automatically added
+		
+		EntryTableRaw = new google.visualization.Table(document.getElementById('ADEntryTableContainerRaw')); //draw raw entry data table
+		EntryTableRaw.draw(EntryDataTableDisplay, {page:"enable", pageSize:5 });
+		
+		SMSTable = new google.visualization.Table(document.getElementById('SendSMSTableContainer')); //draw entry table to send SMS
+		SMSTable.draw(EntryDataTableDisplay, {page:"enable", pageSize:5 });
+
+		//add the selection listener for entry table on the SMS form
+		google.visualization.events.addListener(SMSTable, 'select', function(){
+			var selection = SMSTable.getSelection();	
+			for (var i = 0; i < selection.length; i++){ //function to get phone number after selection
+				var item1 = selection[i];
+				//select the PhoneNum column
+				var phoneNum = EntryData.getFormattedValue(item1.row, 5);
+			}
+			//create form to send message with phone number in form field
+			var SMSformContent = "<form action='web_send.py' method='post'>" +
+			  "<p> Recipient Phone Number: <input type='text' name = 'to' value = " + phoneNum + " /> </p>" +
+			  "<p> Message: <textarea name = 'message'></textarea> </p>" +
+			  "<p> <input type='submit' value='Send'/> </p>" +
+			  "</form>"
+			document.getElementById('sms_form').innerHTML = SMSformContent; //store in sms_form div
+
+		} );
+
+		//add the selection listener for entry table on the front page
+		google.visualization.events.addListener(EntryTable, 'select', frontPageTableOnClick);
+		
+	} //end entry data
+
+  // helper fn called whenever a row in the front page's table is selected
+  function frontPageTableOnClick() {
+		var selection = EntryTable.getSelection();	
+		var lng;
+		var lat;   
+
+		for (var i = 0; i < selection.length; i++){
+			var item1 = selection[i];
+
+		var dealerName = EntryData.getFormattedValue(item1.row, 0); //show agrodealer name
+		var points = EntryData.getFormattedValue(item1.row, 2);
+		//get coordinates
+		lng = Number(points.substring(20,33)); 
+		lat= Number(points.substring(34,47)); 
+		}
+
+		// Create an infowindow at the lat/long coordinates
+		// Set the content and open on the map
+    if (activeMarker) activeMarker.info.close();
+		if(infowindow) infowindow.close();
+		else infowindow = new google.maps.InfoWindow();
+		var content = "<div class='iwContent'>"+ 
+				"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
+				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
+//				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='75' height='75'/>"+
+//				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='75' height='75'/>"+
+				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+				"</div>";
+		//show detailed agrodealer profile
+		var detailedContent = "<div class='iwContent'>"+ 
+				"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
+				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
+//				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='160' height='120'/>"+
+//				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='160' height='120'/>"+
+				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+				//"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' />"+
+				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+				"</br> <b>Phone Number: </b>" + EntryData.getValue(selection[0].row, 5)+ 
+				"</div>";
+
+		var detailedContent = "<div class='iwContent'>"+ 
+				"<table><tr><td><img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' /></td>"+
+				"<td><b>Owner</b><br>" + EntryData.getValue(selection[0].row, 1) + "</td>" +
+				"<td><img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' /></td>" +
+				"<td><b>Shop Name</b><br>" + EntryData.getValue(selection[0].row, 0) + "</td>" +
+				"<td><b>Phone Number</b><br>" + EntryData.getValue(selection[0].row, 5) +
+				"</tr></div>";
+		/*		"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
+				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
+		//		"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='160' height='120'/>"+
+		//		"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='160' height='120'/>"+
+				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+				//"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' />"+
+				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+				"</br> <b>Phone Number: </b>" + EntryData.getValue(selection[0].row, 5)+ 
+				"</div>";
+*/
+
+		infowindow.setContent(content); //set infowindow content
+		document.getElementById('AD_profile').innerHTML=detailedContent; //draw detailed profile on div
+		//document.getElementById('search-bar').append=detailedContent; //draw detailed profile on div
+			//$('#search-box').append(detailedContent);
+			
+			selectedID = EntryData.getValue(selection[0].row, 6); //get and set dealer ID to customize charts and tables
+			querySMS = encodeURIComponent("SELECT 'Week_Number','Total_Feed_Sale','Total_Medicine_Sale','Income_From_Treatment','Income_From_AI','Number_of_AI','Shop_ID_Number' FROM "+SalesTable+" WHERE Shop_ID_Number="+selectedID+"");
+			queryClient = encodeURIComponent("SELECT 'Week_Number','New_Male_Customer','New_Female_Customer','Old_Male_Customer','Old_Female_Customer','CARE_Customers_Male','CARE_Customers_Female','Shop_ID_Number' FROM "+ClientsTable+" WHERE Shop_ID_Number="+selectedID+"");
+			queryCategory = encodeURIComponent("SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos', 'BizLink','RecordAccting','BizRegLic' FROM "+ADCatTable+" WHERE ShopID="+selectedID+"");
+
+			//generate custom tables on right hand tabs
+			loadTable(querySMS, generateSMSDataNewTable);
+			loadTable(queryClient, generateADClientTable);
+			loadTable(queryCategory, generateADCategoryTable);
+			infowindow.setPosition(new google.maps.LatLng(lat, lng));
+			infowindow.open(map);	  
+  }
+
+
+  function enlargePicture(e) {
+    //alert(e.src);
+    var n = e.src.indexOf("&previewImage=true");
+    var fixed = e.src.substring(0,n);
+    //alert(fixed);
+    var options = {
+      onOpen: function (dialog) {
+        dialog.overlay.fadeIn('slow', function () {
+          dialog.container.show('slow', function () {
+            dialog.data.show();
+          });
+        });
+      },
+    };
+    jQuery.modal("<div><img src='" + fixed +"' height='400' width='400' /></div>'", options);
+  }
+
+  
+
+/*************************
+**************************
+GENERATE HEATMAP 
+The heatmap uses category data
+**************************
+**************************/
+	function generateADCategoryTable(response){
+
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();
+
+		var ADCategoryDataRaw =  new google.visualization.DataTable();
+		ADCategoryDataRaw.addColumn('string', response.getDataTable().getColumnLabel(0));
+		for(var  i = 1; i<numCols-1; i++){
+			//ADCategoryDataRaw.addColumn('string', response.getDataTable().getColumnLabel(i));
+			ADCategoryDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		
+		ADCategoryDataRaw.addRows(numRows); //generate rows of the category data
+
+		//get only numerical values of the category table
+		for(var j=0 ; j<numRows ; j++){
+			for(var n=0 ; n<numCols-1 ; n++){
+				var value = 0;
+				if (response.getDataTable().getValue(j,n)) {
+					if (n==0) {
+						value = response.getDataTable().getValue(j,n);
+					} else {
+						value = Number(response.getDataTable().getValue(j,n));
+					}
+				} 
+				ADCategoryDataRaw.setCell(j, n, value);
+			}	  	
+		}
+
+	//draw the heatmap
+	heatmap = new org.systemsbiology.visualization.BioHeatMap(document.getElementById('heatmapContainer'));
+	heatmap.draw(ADCategoryDataRaw, {startColor: {r:255, g:0, b:0, a:1},
+		  endColor: {r:0, g:255, b:0, a:1},
+		  passThroughBlack: false,
+		  numberOfColors: 5,
+		  cellWidth: 40,
+		  cellHeight: 20,
+		  useRowLabels: true,
+		  drawBorder: false});	
+		
+	var CategoryTableMain = new google.visualization.Table(document.getElementById('CategoryContainer'));
+			//tableADClient.draw(ADClientDataRaw, {page:"enable", pageSize:5 });
+			CategoryTableMain.draw(ADCategoryDataRaw, {height:'240px', width:'675px'}); // roughly 10 rows, 4 cols
+			var options = {'title':'Agrodealer Client',
+			'width':500,
+			'height':400};
+	} //end entry table
+
+/*************************
+**************************
+GENERATE CUSTOM CLIENT TABLE 
+The heatmap uses category data
+**************************
+**************************/
+	function generateADClientTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();		
+		var ADClientDataRaw =  new google.visualization.DataTable();
+		
+		//ADClientDataRaw.addColumn('string', "Agrodealer Name");
+		for(var  i = 0; i<numCols-1; i++){
+			ADClientDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		ADClientDataRaw.addRows(numRows); //make table
+		
+		//populate table with 
+		for(var j=0 ; j<numRows ; j++){
+			var entryDataRows = EntryData.getNumberOfRows();
+			/*for(var m=0 ; m<entryDataRows; m++){
+				if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+					ADClientDataRaw.setCell(j, 0, EntryData.getValue(m,0));
+          alert(EntryData.getValue(m,0));
+				}
+			}*/
+			for(var n= 0 ; n<numCols-1 ; n++){
+				ADClientDataRaw.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+		
+		//ADClientsPieChartContainer
+//		var tableADClient = new google.visualization.Table(document.getElementById('ADClientsTableContainer'));
+		var tableADClient = new google.visualization.Table(document.getElementById('CustomerContainer'));
+		//tableADClient.draw(ADClientDataRaw, {page:"enable", pageSize:5 });
+		tableADClient.draw(ADClientDataRaw, {height:'240px', width:'675px'}); // roughly 10 rows, 4 cols
+		var options = {'title':'Agrodealer Client',
+		'width':500,
+		'height':400};
+
+	}//end custom clients
+      
+/*************************
+**************************
+GENERATE CUSTOM SMS DATA TABLE 
+This is the custom SMS table on the front page, which also lends information to the barchart in the sales tab on the right
+**************************
+**************************/
+
+	function generateSMSDataNewTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		
+		//remove existing data if applicable
+		if(SMSData.getNumberOfRows()!=0){
+			for( i = 0; i<SMSData.getNumberOfRows(); i++){
+				SMSData.removeRow(i);
+			}
+		}
+		//keep columns
+		for( i = 0; i<numCols-1; i++){
+			if(!selected){
+				SMSData.addColumn('number', response.getDataTable().getColumnLabel(i));
+			}
+		}
+		
+		//select an ID to show SMS
+		selected = true;
+		SMSData.addRows(numRows);
+		for(var j=0 ; j<numRows ; j++){
+			for(var n= 0 ; n<numCols-1 ; n++){
+				SMSData.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+		}
+    
+		//tableSMS = new google.visualization.Table(document.getElementById('SMSTableContainer')); //draw custom SMS table
+		//tableSMS.draw(SMSData, {page:"enable", pageSize:5 });
+		//tableSMS.draw(SMSData, {height:'240px', width:'650px'}); // roughly 10 rows, 4 cols; scrollbar automatically added
+    
+
+		//draw raw SMS data under Summary tab
+		SMSDataRaw =  new google.visualization.DataTable();
+		SMSDataRaw.addColumn('string', "Agrodealer Name");
+		for(var  i = 1; i<numCols-1; i++){
+			SMSDataRaw.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		SMSDataRaw.addRows(numRows);
+
+	for(var j=0 ; j<numRows ; j++){
+		var entryDataRows = EntryData.getNumberOfRows();
+		for(var m=0 ; m<entryDataRows; m++){
+			if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+				SMSDataRaw.setCell(j, 0, EntryData.getValue(m,0));
+			}
+		}
+		for(var n= 1 ; n<numCols-1 ; n++){
+			SMSDataRaw.setCell(j, n, response.getDataTable().getValue(j,n));
+		}
+	}
+	
+	// Replace with fusionchart
+	//draw barchart with sales data?
+
+	var chart = new google.visualization.ColumnChart(document.getElementById('barChartContainer'));
+	chart.draw(SMSData, {title: 'Sales Performance', width: 500, height:400, isStacked:true,
+			  hAxis: {title: 'Week Number', titleTextStyle: {color: 'black'}},
+				vAxis: {title: 'Sales in BDT', titleTextStyle: {color: 'black'}}
+			 });	
+}
+	
+	
+	
+	//end custom SMS table
+      
+/*************************
+**************************
+GENERATE RAW SMS DATA TABLE 
+This is the custom SMS table on the front page, which also lends information to the barchart in the sales tab on the right
+**************************
+**************************/  
+	function generateSMSDataRawTable(response){
+		numRows = response.getDataTable().getNumberOfRows();
+		numCols = response.getDataTable().getNumberOfColumns();	
+		SMSDataWithName =  new google.visualization.DataTable();
+		SMSDataWithName.addColumn('string', "Agrodealer Name");
+		
+		for(var  i = 1; i<numCols-1; i++){
+			SMSDataWithName.addColumn('number', response.getDataTable().getColumnLabel(i));
+		}
+		SMSDataWithName.addRows(numRows);
+
+		for(var j=0 ; j<numRows ; j++){
+		var entryDataRows = EntryData.getNumberOfRows();
+			for(var m=0 ; m<entryDataRows; m++){
+				if( response.getDataTable().getValue(j,4) ==EntryData.getValue(m,6)){
+					SMSDataWithName.setCell(j, 0, EntryData.getValue(m,0));
+				}
+			}
+
+			for(var n= 1 ; n<numCols-1 ; n++){
+				SMSDataWithName.setCell(j, n, response.getDataTable().getValue(j,n));
+			}
+	}
+		tableSMSRaw = new google.visualization.Table(document.getElementById('SMSTableRawContainer'));
+		tableSMSRaw.draw(SMSDataWithName, {page:"enable", pageSize:5 });
+	}
+</script>
+<style type="text/css">
+body {
+	font: 62.5% "Trebuchet MS", sans-serif;
+	margin:0;
+	padding:0;
+	background: rgb(238,238,238); /* Old browsers */
+	/* IE9 SVG, needs conditional override of 'filter' to 'none' */
+
+	background: -moz-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* FF3.6+ */
+	background: -webkit-gradient(linear, left top, left bottom, color-stop(4%, rgba(238, 238, 238, 1)), color-stop(100%, rgba(219, 219, 219, 1))); /* Chrome,Safari4+ */
+	background: -webkit-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* Chrome10+,Safari5.1+ */
+	background: -o-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* Opera 11.10+ */
+	background: -ms-linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* IE10+ */
+	background: linear-gradient(top, rgba(238, 238, 238, 1) 4%, rgba(219, 219, 219, 1) 100%); /* W3C */
+ filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#eeeeee', endColorstr='#dbdbdb', GradientType=0 ); /* IE6-8 */
+}
+#header {
+	padding:5px 0 0 15px;
+}
+#logo {
+	float:left;
+}
+.clear_both {
+	clear:both;
+}
+#welcome {
+	line-height:50px;
+	vertical-align:middle;
+	margin-left: 80px;
+}
+#tabs-1 {
+	overflow: auto;
+	width: 100%
+}
+#sub-tabs1 {
+	width:45%;
+	float:left;
+}
+#ADCategoryTableContainer {
+}
+#ADEntryTableContainer {
+}
+#AD_Info {
+	width:45%;
+	float:left;
+	margin-right:20px;
+	border:solid 1px #999;
+	padding:20px;
+	-webkit-border-radius: 20px;
+}
+#barChartContainer {		
+}
+.iwContent {
+	font-family:"Trebuchet MS", Arial, Helvetica, sans-serif;
+	font-size:14px;
+}
+#search-widget {
+	padding:10px;
+}
+#shop-pic {
+	padding:10px;
+}
+#owner-pic {
+	padding:10px;
+}
+#phone-num {
+	padding:10px;
+}
+#AD_profile {
+	padding-top:20px;
+}
+#SMSTableContainer {
+	padding:20px;
+}
+#CustomerContainer {
+	padding:20px;
+}
+#CategoryContainer {
+	padding:20px;
+}
+#simplemodal-overlay {
+  background-color:#000;
+}
+#simplemodal-container {
+  background-color:#333;
+  border:8px solid #444;
+  padding:12px;
+}
+
+#simplemodal-container a.modalCloseImg {
+	background:url(imgs/x.png) no-repeat; /* adjust url as required */
+	width:25px;
+	height:29px;
+	display:inline;
+	z-index:3200;
+	position:absolute;
+	top:-15px;
+	right:-18px;
+	cursor:pointer;
+}
+
+
+</style>
+</head>
+
+<body>
+<div id="header">
+          <div id="logo"><img src="imgs/logo.jpg"/></div>
+          <h1 id="welcome">Welcome to Krishi Utso</h1>
+</div>
+<div id="content_wrapper" class="clear_both">
+          <div id="tabs">
+                    <ul>
+                              <li><a href="#tabs-1">Shop Profiles</a></li>
+                              <li><a href="#tabs-2">Summary</a></li>
+                              <li><a href="#tabs-3">Raw Data</a></li>
+                              <li><a href="#tabs-4">Send Text Message</a></li>
+                    </ul>
+                    <div id="tabs-1">
+                              	<div id="search-widget" class="ui-widget">
+                                  <label for="profile-search">Search: </label>
+                                  <input id="profile-search" />
+                                  <button type="button" id="profile-search-btn">Go</button> 
+                              	</div>
+
+                              <div id="AD_Info">
+                               		<div id="ADEntryTableContainer"></div>
+																				<div id="AD_profile"></div>
+                                        <div id="SMSTableContainer"></div>
+																				<div id="CustomerContainer"></div>
+																				<div id="CategoryContainer"></div>
+                                       
+                              </div>
+                              <div id="sub-tabs1">
+                                        <ul>
+                                                  <li><a href="#sub-tabs1-1">Map</a></li>
+                                                  <li><a href="#sub-tabs1-2">Clients</a></li>
+                                                  <li><a href="#sub-tabs1-3">Sales</a></li>
+                                                  <li><a href="#sub-tabs1-4">Categorization</a></li>
+                                        </ul>
+                                        <div id="sub-tabs1-1">
+                                                  <div id='map' style="margin-top: 10px; height: 500px;"> </div>
+                                        </div>
+                                        <div id="sub-tabs1-2">
+																						<div id="ADClientsTableContainer">
+																							<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11%2C+col12%2C+col13+from+1i2B3pHtuOS51FIHeDx9lsBqZ1TBhRoUDAw_f2nY+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Customers%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;width=500&amp;height=300"></iframe>
+																						</div>
+																						<div id="ADClientsPieChartContainer">
+																						</div>
+																				</div>
+                                        <div id="sub-tabs1-3">
+                                                  <div id="barChartContainer">
+                                                  	<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Sales+in+BDT%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=500&amp;height=300"></iframe>
+
+																										<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col12+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Treatments%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22scaleFactor%22%3Anull%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=500&amp;height=300"></iframe>
+                                                  </div>
+                                        </div>
+                                        <div id="sub-tabs1-4">
+                                                  <div id="heatmapContainer">
+                                                  	<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;width=500&amp;height=300"></iframe>
+                                                  </div>
+                                        </div>
+                              </div>
+                    </div>
+                    <div id="tabs-2"> <div id="ClientChartContainer">
+																						<iframe width="1000" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;gco_title=Ratings+Summary&amp;width=1000&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Sales+in+BDT%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=Sales+Summary&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=550&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col8%2C+col9%2C+col10%2C+col11%2C+col12%2C+col13+from+1i2B3pHtuOS51FIHeDx9lsBqZ1TBhRoUDAw_f2nY+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Customers%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=Customers+Summary&amp;width=550&amp;height=400"></iframe>
+																						
+																						<iframe width="550" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col7%2C+col12+from+1uZTWKtkg7W7ln7v0bzltekoDnbjtLia8uN7n76w+where+col6+%3E%3D+1007+order+by+col7+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Number+of+Treatments%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%2C+%22formatOptions%22%3A%7B%22scaleFactor%22%3Anull%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22Week+Number%22%7D&amp;gco_legend=right&amp;gco_title=AI+Treatment+Summary&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22errorBars%22%3A%7B%22errorType%22%3A%22none%22%7D%7D%7D&amp;width=550&amp;height=400"></iframe>
+                    									</div>
+																			<div id="SalesSummaryLineChartContainer"></div>
+										</div>
+                    <div id="tabs-3">
+                              <div id="sub-tabs3">
+                                        <ul>
+                                                  <li><a href="#sub-tabs3-1">CategoryTable</a></li>
+                                                  <li><a href="#sub-tabs3-2">AD Entry Table</a></li>
+                                                  <li><a href="#sub-tabs3-3">SMS</a></li>
+                                                  <li><a href="#sub-tabs3-4">ClientTable</a></li>
+                                        </ul>
+                                        <div id="sub-tabs3-1">
+                                                  <div id="ADCategoryTableContainer"></div>
+                                        </div>
+                                        <div id="sub-tabs3-2">
+                                                  <div id="ADEntryTableContainerRaw"></div>
+                                        </div>
+                                        <div id="sub-tabs3-3">
+                                                  <div id="SMSTableRawContainer"></div>
+                                        </div>
+                                        <div id="sub-tabs3-4">
+                                                  <div id="ClientTableContainer"></div>
+                                        </div>
+                              </div>
+                    </div>
+                    <div id="tabs-4">
+                              <div id="SendSMSTableContainer" style= "float: left;"></div>
+                              <div id="sms_form">
+                                        <h3> Send a message </h3>
+                              </div>
+                              <div class="clear_both"></div>
+                    </div>
+          </div>
+          <div id='pic-modal'></div>
+</div>
+</body>
+</html>
