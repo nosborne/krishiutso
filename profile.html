@@ -193,6 +193,7 @@ var circleColor, circleRadius;
 		for(i=0; i<myLat.length; i++)
 		{
 			var shopRating = ratings[i];
+			// Set map pin and circle color based on shop rating range
 			if (shopRating>=70){
 				//alert(shopRating);
 				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
@@ -219,7 +220,7 @@ var circleColor, circleRadius;
 				icon: mapIcon
 			});// draw markers
 			
-			//Add circle
+			//Add circle, sized and colored by shop rating
 			circle = new google.maps.Circle({
 				center: latLng,
 				map: map,
@@ -494,21 +495,10 @@ This table is populated with entry data for various functions that use entry inf
 				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
 //				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='75' height='75'/>"+
 //				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='75' height='75'/>"+
-				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
-				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
+//				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
+//				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
 				"</div>";
 		//show detailed agrodealer profile
-		var detailedContent = "<div class='iwContent'>"+ 
-				"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
-				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
-//				"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='160' height='120'/>"+
-//				"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='160' height='120'/>"+
-				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
-				//"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' />"+
-				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
-				"</br> <b>Phone Number: </b>" + EntryData.getValue(selection[0].row, 5)+ 
-				"</div>";
-
 		var detailedContent = "<div class='iwContent'>"+ 
 				"<table><tr><td><img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' /></td>"+
 				"<td><b>Owner</b><br>" + EntryData.getValue(selection[0].row, 1) + "</td>" +
@@ -516,16 +506,7 @@ This table is populated with entry data for various functions that use entry inf
 				"<td><b>Shop Name</b><br>" + EntryData.getValue(selection[0].row, 0) + "</td>" +
 				"<td><b>Phone Number</b><br>" + EntryData.getValue(selection[0].row, 5) +
 				"</tr></div>";
-		/*		"<b>Shop Name: </b>" + EntryData.getValue(selection[0].row, 0)+ 
-				"</br> <b>Owner: </b>" + EntryData.getValue(selection[0].row, 1)+ 
-		//		"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' width='160' height='120'/>"+
-		//		"</br> <b>Shop Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 4) + "' width='160' height='120'/>"+
-				"</br> <b>Owner Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 3) + "&previewImage=true' />"+
-				//"</br> <b>Owner Picture: </b></br> <img src='" + EntryData.getValue(selection[0].row, 3) + "' />"+
-				"</br> <b>Shop Picture: </b></br> <img onclick='enlargePicture(this)' src='" + EntryData.getValue(selection[0].row, 4) + "&previewImage=true' />"+
-				"</br> <b>Phone Number: </b>" + EntryData.getValue(selection[0].row, 5)+ 
-				"</div>";
-*/
+
 
 		infowindow.setContent(content); //set infowindow content
 		document.getElementById('AD_profile').innerHTML=detailedContent; //draw detailed profile on div
@@ -783,13 +764,26 @@ body {
  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#eeeeee', endColorstr='#dbdbdb', GradientType=0 ); /* IE6-8 */
 }
 #header {
-	padding:5px 0 0 15px;
+	font-size: 1.5em;
+	padding: 0 75px 0 50px;
 }
 #logo {
 	float:left;
 }
 .clear_both {
 	clear:both;
+}
+.title {
+	font-size:1.5em;
+	margin-right:10px;
+	padding: 20px;
+}
+#content_wrapper{
+	padding: .25em;
+}
+#navmenu{
+	float:left;
+	width:80%;
 }
 #welcome {
 	line-height:50px;
@@ -823,7 +817,7 @@ body {
 	font-size:14px;
 }
 #search-widget {
-	padding:10px;
+	padding:0 0 10px 0;
 }
 #shop-pic {
 	padding:10px;
@@ -872,18 +866,18 @@ body {
 </head>
 
 <body>
-<div id="header">
-          <div id="logo"><img src="imgs/logo.jpg"/></div>
-          <h1 id="welcome">Welcome to Krishi Utso</h1>
-</div>
+
 <div id="content_wrapper" class="clear_both">
           <div id="tabs">
+								<div id="navmenu">
                     <ul>
+                              <li id="header"><img src="imgs/KrishiUtso.png"></img></li>
                               <li><a href="#tabs-1">Shop Profiles</a></li>
                               <li><a href="#tabs-2">Summary</a></li>
                               <li><a href="#tabs-3">Raw Data</a></li>
                               <li><a href="#tabs-4">Send Text Message</a></li>
                     </ul>
+								</div>
                     <div id="tabs-1">
                               	<div id="search-widget" class="ui-widget">
                                   <label for="profile-search">Search: </label>
