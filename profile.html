@@ -196,19 +196,19 @@ var circleColor, circleRadius;
 			// Set map pin and circle color based on shop rating range
 			if (shopRating>=70){
 				//alert(shopRating);
-				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
+				//mapIcon = 'http://maps.google.com/mapfiles/ms/icons/green-dot.png';
 				circleColor = 'Green';
 			}
 			else if (shopRating>=50 && shopRating<70){
-				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png';
-				circleColor = 'Blue';
-			}
-			else if (shopRating>=25 && shopRating<50){
-				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png';
+				//mapIcon = 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png';
 				circleColor = 'Yellow';
 			}
+			else if (shopRating>=25 && shopRating<50){
+				//mapIcon = 'http://maps.google.com/mapfiles/ms/icons/yellow-dot.png';
+				circleColor = 'Orange';
+			}
 			else {
-				mapIcon = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
+				//mapIcon = 'http://maps.google.com/mapfiles/ms/icons/red-dot.png';
 				circleColor = 'Red';
 			}
 			var latLng = new google.maps.LatLng(myLat[i], myLng[i]);
@@ -224,8 +224,9 @@ var circleColor, circleRadius;
 			circle = new google.maps.Circle({
 				center: latLng,
 				map: map,
-				radius: (150*shopRating),
+				radius: (125*shopRating),
 				fillColor: circleColor,
+				fillOpacity: 0.5,
 				strokeColor: "Gray",
 				strokeOpacity: 0.5,
 				clickable: false
@@ -893,7 +894,8 @@ body {
 																				<div id="CategoryContainer"></div>
                                        
                               </div>
-                              <div id="sub-tabs1">
+															<div id='map' style="margin-top: 10px; height: 500px;"> </div>
+                              <!-- <div id="sub-tabs1">
                                         <ul>
                                                   <li><a href="#sub-tabs1-1">Map</a></li>
                                                   <li><a href="#sub-tabs1-2">Clients</a></li>
@@ -923,7 +925,8 @@ body {
                                                   </div>
                                         </div>
                               </div>
-                    </div>
+                   --> 
+												</div>
                     <div id="tabs-2"> <div id="ClientChartContainer">
 																						<iframe width="1000" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;gco_title=Ratings+Summary&amp;width=1000&amp;height=400"></iframe>
 																						
