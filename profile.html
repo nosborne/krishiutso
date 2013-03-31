@@ -23,9 +23,11 @@
 
 	 //fusion table IDs
 	 var SalesTable = 5461848; //SMS sales data
-	 var ClientsTable = 4979471; //SMS clients data
 	 var NewADTable = 5461272; //Shop owner entry form
 	 var ADCatTable = 5461074; //Shop owner categorization table
+//	 var ClientsTable = 4979471; //SMS clients data
+	 var ClientsTable = "1BpHD7KtROv-O1_3qAgzZqMEIWDWaR8O_4lhx5jw";
+
 	var salesTableID = "1BcDKwbf7azUIzxlCyeAQMcYYfcbJhEmRjxQRqT4"; //appspot fusion table
 	var mapTableID = "1Wi_qTfg_HcHJvCF57zszQZzvdajLY_IPCGwtNio"; //appspot merged fustion table
 	
@@ -261,16 +263,6 @@ var circleColor, circleRadius;
         }
 
 			  marker.info.open(map, this);		  
-				/* draw circle upon click; this is not entirely functional. The point was to draw circles
-				of varying radii based on agrodealer's sales */
-				var categoryOptions = {
-					strokeColor: "#FF0000",
-					strokeWeight: 2,
-					map: map,
-					center: this.position,
-					radius: 10000
-				};
-			//  catCircle = new google.maps.Circle(categoryOptions);
 			}
 		  })(marker, i));
 		}// end iteration
