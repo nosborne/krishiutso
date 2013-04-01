@@ -13,5 +13,5 @@ function salesCallBack(response){
 		return;
 	}
 	salesData = response.getDataTable();
-	drawSalesChart();
+//	drawSalesChart();
 }

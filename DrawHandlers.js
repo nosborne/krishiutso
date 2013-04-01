@@ -3,7 +3,7 @@ var categoryChart;
 var salesChart;
 
 function initCharts(){
-	salesChart = new google.visualization.ColumnChart(document.getElementById('SMSTableContainer'));
+//	salesChart = new google.visualization.ColumnChart(document.getElementById('SMSTableContainer'));
 /*
 	google.visualization.events.addListener(leftChart, 'onmouseover', barMouseOver);
     google.visualization.events.addListener(leftChart, 'onmouseout', barMouseOut);

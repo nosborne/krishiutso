@@ -23,11 +23,12 @@
 
 	 //fusion table IDs
 	 var SalesTable = 5461848; //SMS sales data
-	 var NewADTable = 5461272; //Shop owner entry form
+//	 var NewADTable = 5461272; //Shop owner entry form
 	 var ADCatTable = 5461074; //Shop owner categorization table
-//	 var ClientsTable = 4979471; //SMS clients data
-	 var ClientsTable = "1BpHD7KtROv-O1_3qAgzZqMEIWDWaR8O_4lhx5jw";
-
+	 var ClientsTable = 4979471; //SMS clients data
+	var shopProfileTableID = "1245llxlBij673dp3mq72tRW7khXofM5crYd4iqw";
+//	var shopProfileTableID = "1xQmJhRLoRASQAPUvalThM0FJ-Na8CVmL5UaXoIY"; //merged profile and ratings table
+	//var ClientsTable = "1BpHD7KtROv-O1_3qAgzZqMEIWDWaR8O_4lhx5jw";
 	var salesTableID = "1BcDKwbf7azUIzxlCyeAQMcYYfcbJhEmRjxQRqT4"; //appspot fusion table
 	var mapTableID = "1Wi_qTfg_HcHJvCF57zszQZzvdajLY_IPCGwtNio"; //appspot merged fustion table
 	
@@ -55,8 +56,8 @@
 	 var queryClient = encodeURIComponent("SELECT 'New_Male_Customer','New_Female_Customer','Old_Male_Customer','Old_Female_Customer' FROM "+ClientsTable+"");
 	 var ADClientData = new google.visualization.DataTable();
 	 
-	 //query the dealer entry table
-	 var queryEntry = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic','PhoneNum', 'ShopID' FROM "+NewADTable+"");
+	 //query the shop profile  table
+	 var queryProfile = encodeURIComponent("SELECT 'ShopName','OwnerName','ShopLocation','OwnerPic','ShopPic','PhoneNum', 'ShopID' FROM "+shopProfileTableID+"");
 	 var EntryData = new google.visualization.DataTable();
 	 
 	 //query the SMS table
@@ -93,34 +94,34 @@
 	 }
 	 
 	 /*
-	 jhe window loads:
+	 the window loads:
 		* all the data from the fusion table
 		* interface components
 		* Map
+		* Charts
 	 */
 	 jQuery(document).ready(function($) {
 			$('#tabs').tabs();
 			$('#sub-tabs1').tabs();
 			$('#sub-tabs3').tabs();
 			loadTable(queryCategory, generateCategoryDataTable);
-			loadTable(queryEntry, generateEntryDataTable);
+//			loadTable(queryEntry, generateEntryDataTable);
+			loadTable(queryProfile, generateProfileDataTable);
 			loadTable(querySMSRaw, generateSMSDataRawTable);
 			loadTable(queryClient, generateClientTable);
 			initializeMap();
-			initCharts();
+		//	initCharts();
 			drawCharts();
 
 	  });
 	  //update dealer profiles in a <div> with the id AD_Profile
-	 
- 
 	 function updateProfile(Content){
 		$('#AD_Profile').append(Content);
 	  }
 	  
 //load visualization packages
    	google.load('visualization', '1', {packages:['table']});
-	google.load("visualization", "1", {packages:["corechart"]});
+		google.load("visualization", "1", {packages:["corechart"]});
     systemsbiology.load("visualization", "1.0", {packages:["bioheatmap"]});
 	 
 /*************************
@@ -157,6 +158,7 @@ var circleColor, circleRadius;
 		var mapOptions = {
 			center: mapCenter,
 			zoom: 9,
+			scrollwheel: false,
 			mapTypeId: google.maps.MapTypeId.ROADMAP
 		}
 		//draw map
@@ -241,10 +243,6 @@ var circleColor, circleRadius;
 				content: "<div class='iwContent'>"+ 
 						"<b>Shop Name: </b>" + dealerNames[i]+ 
 						"</br> <b>Owner: </b>" + ownerNames[i]+ 
-						//"</br> <b>Owner Picture: </b> </br><img src='" + ownerPics[i] + "' width='75' height='75'/>"+
-						//"</br><b>Shop Picture: </b></br>  <img src='" + shopPics[i] + "' width='75' height='75'/>"+
-						//"</br> <b>Owner Picture: </b> </br><img onclick='enlargePicture(this)' src='" + ownerPics[i] + "&previewImage=true' />"+
-						//"</br><b>Shop Picture: </b></br>  <img onclick='enlargePicture(this)' src='" + shopPics[i] + "&previewImage=true' />"+
 						"<br><b>Rating: </b>" + ratings[i] +
 						"</div>"
 				});
@@ -362,7 +360,7 @@ GENERATE ENTRY DATA TABLE
 This table is populated with entry data for various functions that use entry information
 **************************
 **************************/
-	function generateEntryDataTable(response){
+	function generateProfileDataTable(response){
 		numRows = response.getDataTable().getNumberOfRows();
 		numCols = response.getDataTable().getNumberOfColumns();	
 		numColsDisplay = 2;	//display 2 columns: dealership name and owner name
@@ -374,7 +372,8 @@ This table is populated with entry data for various functions that use entry inf
 			EntryData.addColumn('string', response.getDataTable().getColumnLabel(i)); // other columns in the table
 		}
 
-		EntryData.addColumn('number', response.getDataTable().getColumnLabel(numCols-1)); // dealer ID column
+		EntryData.addColumn('number', response.getDataTable().getColumnLabel(numCols-2)); // dealer ID column
+		//EntryData.addColumn('number', response.getDataTable().getColumnLabel(numCols-1)); // ratings column
 		EntryData.addRows(numRows);
 		for(var j=0 ; j<numRows ; j++){
 			for(var n= 0 ; n<numCols ; n++){
@@ -512,9 +511,9 @@ This table is populated with entry data for various functions that use entry inf
 			queryCategory = encodeURIComponent("SELECT 'ShopName','Sales','CustVisits','CustCare','ShopBrand','ProdRange','ProdDisp','SalesPromos', 'BizLink','RecordAccting','BizRegLic' FROM "+ADCatTable+" WHERE ShopID="+selectedID+"");
 
 			//generate custom tables on right hand tabs
-			loadTable(querySMS, generateSMSDataNewTable);
-			loadTable(queryClient, generateADClientTable);
-			loadTable(queryCategory, generateADCategoryTable);
+//			loadTable(querySMS, generateSMSDataNewTable);
+//			loadTable(queryClient, generateADClientTable);
+//			loadTable(queryCategory, generateADCategoryTable);
 			infowindow.setPosition(new google.maps.LatLng(lat, lng));
 			infowindow.open(map);	  
   }
@@ -796,7 +795,7 @@ body {
 #ADEntryTableContainer {
 }
 #AD_Info {
-	width:45%;
+	width: 420px;
 	float:left;
 	margin-right:20px;
 	border:solid 1px #999;
@@ -880,13 +879,14 @@ body {
 
                               <div id="AD_Info">
                                		<div id="ADEntryTableContainer"></div>
-																				<div id="AD_profile"></div>
-                                        <div id="SMSTableContainer"></div>
-																				<div id="CustomerContainer"></div>
-																				<div id="CategoryContainer"></div>
-                                       
+																	<div id="AD_profile"></div>
+                                  <div id="SMSTableContainer">
+																		<div id='map' style="margin-top: 10px; height: 500px;"> </div>																			
+                                  </div>
+																	<!-- <div id="CustomerContainer"></div>
+																	<div id="CategoryContainer"></div> 
+																	-->          
                               </div>
-															<div id='map' style="margin-top: 10px; height: 500px;"> </div>
                               <!-- <div id="sub-tabs1">
                                         <ul>
                                                   <li><a href="#sub-tabs1-1">Map</a></li>
@@ -918,6 +918,15 @@ body {
                                         </div>
                               </div>
                    --> 
+
+														<div id="summaryTables">
+															<iframe width="700" height="500" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col9%3E%3E0%2C+col10%3E%3E1%2C+col11%3E%3E1%2C+col12%3E%3E1%2C+col13%3E%3E1%2C+col14%3E%3E1%2C+col15%3E%3E1%2C+col16%3E%3E1%2C+col17%3E%3E1%2C+col18%3E%3E1%2C+col19%3E%3E1+from+1xQmJhRLoRASQAPUvalThM0FJ-Na8CVmL5UaXoIY+order+by+col9%3E%3E0+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_vAxes=%5B%7B%22title%22%3A%22Total+Rating%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_title=Shop+Categorization+Ratings&amp;width=700&amp;height=500"></iframe>
+															<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col9%3E%3E0%2C+AVERAGE(col10%3E%3E1)+from+1xQmJhRLoRASQAPUvalThM0FJ-Na8CVmL5UaXoIY+group+by+col9%3E%3E0+order+by+AVERAGE(col10%3E%3E1)+desc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_vAxes=%5B%7B%22title%22%3A%22Rating%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=false&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22%22%7D&amp;gco_legend=none&amp;gco_title=Average+Sales+Rating&amp;width=500&amp;height=300"></iframe>
+															<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col9%3E%3E0%2C+AVERAGE(col11%3E%3E1)+from+1xQmJhRLoRASQAPUvalThM0FJ-Na8CVmL5UaXoIY+group+by+col9%3E%3E0+order+by+AVERAGE(col11%3E%3E1)+desc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_vAxes=%5B%7B%22title%22%3A%22Rating%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=false&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22%22%7D&amp;gco_legend=none&amp;gco_title=Average+Customer+Visits+Rating&amp;width=500&amp;height=300"></iframe>
+															<iframe width="500" height="300" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col9%3E%3E0%2C+AVERAGE(col12%3E%3E1)+from+1xQmJhRLoRASQAPUvalThM0FJ-Na8CVmL5UaXoIY+group+by+col9%3E%3E0+order+by+AVERAGE(col12%3E%3E1)+desc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_vAxes=%5B%7B%22title%22%3A%22Rating%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22formatOptions%22%3A%7B%22source%22%3A%22data%22%7D%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=false&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%2C+%22title%22%3A%22%22%7D&amp;gco_legend=none&amp;gco_title=Average+Customer+Care+Rating&amp;width=500&amp;height=300"></iframe>
+															
+																<iframe width=100% height="400" scrolling="yes" frameborder="no" src="https://www.google.com/fusiontables/embedviz?viz=GVIZ&amp;t=TABLE&amp;containerId=gviz_canvas&amp;q=select+col8%2C+count()%2C+SUM(col10)%2C+SUM(col15)%2C+SUM(col13)%2C+SUM(col16)%2C+SUM(col14)%2C+SUM(col11)%2C+SUM(col12)+from+1BpHD7KtROv-O1_3qAgzZqMEIWDWaR8O_4lhx5jw+group+by+col8"></iframe>
+														</div>
 												</div>
                     <div id="tabs-2"> <div id="ClientChartContainer">
 																						<iframe width="1000" height="400" scrolling="no" frameborder="no" src="https://www.google.com/fusiontables/embedviz?containerId=gviz_canvas&amp;q=select+col6%2C+col17%2C+col16%2C+col15%2C+col14%2C+col13%2C+col12%2C+col11%2C+col10%2C+col9%2C+col8+from+1zpb-7GFXaU1JUSd_fpa2rmPyQMQ9Tb_fT5u5NpY+order+by+col6+asc+limit+100&amp;viz=GVIZ&amp;t=COLUMN&amp;uiversion=2&amp;gco_forceIFrame=true&amp;gco_hasLabelsColumn=true&amp;gco_type=columns&amp;gco_vAxes=%5B%7B%22title%22%3A%22Ratings+Summary%22%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22logScale%22%3Afalse%7D%2C%7B%22useFormatFromData%22%3Atrue%2C+%22viewWindow%22%3A%7B%22max%22%3Anull%2C+%22min%22%3Anull%7D%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22logScale%22%3Afalse%7D%5D&amp;gco_useFirstColumnAsDomain=true&amp;gco_isStacked=true&amp;gco_booleanRole=certainty&amp;gco_hAxis=%7B%22useFormatFromData%22%3Atrue%2C+%22minValue%22%3Anull%2C+%22maxValue%22%3Anull%2C+%22viewWindow%22%3Anull%2C+%22viewWindowMode%22%3Anull%7D&amp;gco_legend=right&amp;gco_domainAxis=%7B%22direction%22%3A1%7D&amp;gco_series=%7B%220%22%3A%7B%22targetAxisIndex%22%3A0%7D%7D&amp;gco_title=Ratings+Summary&amp;width=1000&amp;height=400"></iframe>
